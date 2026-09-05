@@ -1,27 +1,22 @@
-import { useEffect, useState } from 'react'
 import { exportEvidence } from '../lib/api'
-import type { ResultEnvelope } from '../lib/types'
+import type { ProfileIdentifier, ResultEnvelope } from '../lib/types'
+
+type Selection = ProfileIdentifier & { source_profile_index: number }
+type Props = { result: ResultEnvelope; selections: Selection[]; onSelectionChange: (selections: Selection[]) => void }
 
 const parameterValue = (value: unknown) => typeof value === 'string' ? value : JSON.stringify(value)
-type Selection = { wmo: string; cycle: number; source_profile_index: number }
+const same = (left: Selection, right: Selection) => left.wmo === right.wmo && left.cycle === right.cycle && left.source_profile_index === right.source_profile_index
 
-export function ScientificReceipt({ result }: { result: ResultEnvelope }) {
+export function ScientificReceipt({ result, selections, onSelectionChange }: Props) {
   const representations = Array.from(new Map(result.data.filter((row) => row.wmo !== undefined && row.cycle !== undefined && row.source_profile_index !== undefined).map((row) => {
     const selection = { wmo: String(row.wmo), cycle: Number(row.cycle), source_profile_index: Number(row.source_profile_index) }
     return [`${selection.wmo}/${selection.cycle}/${selection.source_profile_index}`, { ...selection, scheme: String(row.vertical_sampling_scheme) }]
   })).values())
-  const representationKey = JSON.stringify(representations.map(({ wmo, cycle, source_profile_index }) => ({ wmo, cycle, source_profile_index })).sort((left, right) => `${left.wmo}/${left.cycle}/${left.source_profile_index}`.localeCompare(`${right.wmo}/${right.cycle}/${right.source_profile_index}`)))
-  const [selected, setSelected] = useState<Selection[]>(() => JSON.parse(representationKey) as Selection[])
-  useEffect(() => {
-    // Selection is stateful user input and must follow only a new server result set.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelected(JSON.parse(representationKey) as Selection[])
-  }, [representationKey])
-  const toggle = (selection: Selection) => setSelected((current) => current.some((item) => item.wmo === selection.wmo && item.cycle === selection.cycle && item.source_profile_index === selection.source_profile_index) ? current.filter((item) => item.wmo !== selection.wmo || item.cycle !== selection.cycle || item.source_profile_index !== selection.source_profile_index) : [...current, selection])
+  const toggle = (selection: Selection) => onSelectionChange(selections.some((item) => same(item, selection)) ? selections.filter((item) => !same(item, selection)) : [...selections, selection])
   const download = async () => {
-    const blob = await exportEvidence(result.query_plan, selected)
+    const blob = await exportEvidence(result.query_plan, selections)
     const url = URL.createObjectURL(blob); const anchor = document.createElement('a')
     anchor.href = url; anchor.download = 'nereid-evidence.zip'; anchor.click(); URL.revokeObjectURL(url)
   }
-  return <section className="receipt" aria-labelledby="receipt-heading"><h2 id="receipt-heading">Scientific receipt</h2><fieldset><legend>Select profile representations for evidence export</legend>{representations.map((item) => <label key={`${item.wmo}/${item.cycle}/${item.source_profile_index}`}><input type="checkbox" checked={selected.some((choice) => choice.wmo === item.wmo && choice.cycle === item.cycle && choice.source_profile_index === item.source_profile_index)} onChange={() => toggle(item)} />{item.wmo} / cycle {item.cycle} / representation {item.source_profile_index} ({item.scheme})</label>)}</fieldset><button type="button" onClick={() => void download()} disabled={!selected.length}>Download evidence ZIP</button><div className="receipt-counts"><span><strong>{result.qc_summary.retained}</strong> retained</span><span><strong>{result.qc_summary.rejected}</strong> excluded</span></div><div className="receipt-columns"><div><h3>Sources</h3>{result.provenance.map((source) => <p key={source.sha256}><a href={source.source_url}>Source file</a><br />DOI {source.snapshot_doi}<br />Fetched <time dateTime={source.fetched_at}>{source.fetched_at}</time><br /><code>{source.sha256}</code></p>)}</div><div><h3>Methods</h3>{result.methods.map((method) => <div key={method.name}><p>{method.name}</p><dl>{Object.entries(method.parameters).map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{parameterValue(value)}</dd></div>)}</dl></div>)}</div><div><h3>Assumptions & warnings</h3>{[...result.assumptions, ...result.warnings].map((item) => <p key={item}>{item}</p>)}</div></div></section>
+  return <section className="receipt" aria-labelledby="receipt-heading"><h2 id="receipt-heading">Scientific receipt</h2><fieldset><legend>Select exact profile representations for linked views and evidence export</legend>{representations.map((item) => <label key={`${item.wmo}/${item.cycle}/${item.source_profile_index}`}><input type="checkbox" checked={selections.some((choice) => same(choice, item))} onChange={() => toggle(item)} />{item.wmo} / cycle {item.cycle} / representation {item.source_profile_index} ({item.scheme})</label>)}</fieldset><button type="button" onClick={() => void download()} disabled={!selections.length}>Download evidence ZIP</button><div className="receipt-counts"><span><strong>{result.qc_summary.retained}</strong> retained</span><span><strong>{result.qc_summary.rejected}</strong> excluded</span></div><div className="receipt-columns"><div><h3>Sources</h3>{result.provenance.map((source) => <p key={source.sha256}><a href={source.source_url}>Source file</a><br />DOI {source.snapshot_doi}<br />Fetched <time dateTime={source.fetched_at}>{source.fetched_at}</time><br /><code>{source.sha256}</code></p>)}</div><div><h3>Methods</h3>{result.methods.map((method) => <div key={method.name}><p>{method.name}</p><dl>{Object.entries(method.parameters).map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{parameterValue(value)}</dd></div>)}</dl></div>)}</div><div><h3>Assumptions & warnings</h3>{[...result.assumptions, ...result.warnings].map((item) => <p key={item}>{item}</p>)}</div></div></section>
 }

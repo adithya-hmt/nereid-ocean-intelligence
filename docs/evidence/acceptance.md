@@ -31,24 +31,23 @@ WMO 2902388/cycle 274 contains two source representations. `source_profile_index
 
 ## Validation run
 
-Run in this order on 2026-09-05:
+Run on 2026-09-05 after the linked exact-representation workflow change:
 
 ```bash
-uv run --project pipeline pytest -v                 # 39 passed (71 dependency warnings)
-uv run --project api pytest -v                      # 39 passed (71 dependency warnings)
-pnpm --dir web test                                 # 7 files / 19 tests passed
+uv run --project pipeline pytest -v                 # passed: 64 tests (188 warnings)
+uv run --project api pytest -v                      # passed: 64 tests (188 warnings)
+pnpm --dir web test --run                           # passed: 7 files / 17 tests
 pnpm --dir web lint                                 # passed
 pnpm --dir web build                                # passed
-pnpm --dir web exec playwright test                 # 2 passed
-NEREID_BENCHMARK_GPU=1 pnpm --dir web exec playwright test e2e/rendering.spec.ts  # 1 passed
+pnpm --dir web exec playwright test                 # passed: 2 tests
+NEREID_BENCHMARK_GPU=1 pnpm --dir web exec playwright test e2e/rendering.spec.ts  # passed: 1 test; run after all Playwright
 uv run --project api python docs/evidence/evaluate_queries.py
-# exits 2: planner evaluation BLOCKED: Azure configuration unavailable;
-# no live score measured
+# exits 2: planner evaluation BLOCKED: Azure configuration unavailable; no live score measured
 ```
 
-The full Playwright command runs the rendering test and therefore overwrites `rendering.json`; the headed GPU command was deliberately run afterwards to regenerate Task 6 GPU evidence. It used system Chromium 151.0.0.0 on DISPLAY `:0` / Wayland and reported Intel UHD Graphics 620. The regenerated 100,000-point result was 57.438 actual R3F FPS (82.8 ms initialization); see `rendering.json` for browser user agent, renderer, and probe details.
+The full offline Playwright replay selects exactly `1902202/161/0` and `2902388/274/0`, renders two separate profile panels and metric/refusal states, derives a gap-masked section from those IDs, verifies longitude/latitude/depth/time trajectory metadata, and confirms the same two IDs are posted to the offline evidence export endpoint. The GPU benchmark was run last among browser measurements. `rendering.json` records Intel UHD Graphics 620 and an actual 100,000-point R3F result of **56.340 FPS** (161.2 ms initialization); the hardware-mode test requires at least 30 FPS. The default SwiftShader/headless mode requires only completion with a positive measured FPS, so it does not falsify the hardware target.
 
-`web/e2e/winning-flow.spec.ts` starts FastAPI against the committed snapshot and Next.js with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`. It blocks every browser request whose host is not loopback, executes the March filters, parses numeric trajectory bounds and cutoff, confirms both WMO/cycle identities, native depth plot, receipt DOI/QC/method/provenance and the multiple-scheme warning, downloads `nereid-evidence.zip`, verifies the five ZIP member names, and inflates `selection.csv` to prove it contains exactly `1902202/161/0` and `2902388/274/0` while excluding `2902388/274/1`. It fails if synthetic or test-only fallback labels are visible. The focused API export test also verifies exact member order, deterministic bytes for reordered input, sorted selected rows, QC/source fields, units, query plan, QC counts, and download disposition.
+Tracked-file scanning found no high-confidence API key/private-key patterns. `pnpm --dir web licenses list` completed (955 output lines). `lens_diagnostics mode=all` could not be measured because the executable is unavailable in this environment. `git diff --check` passed.
 
 ## Planner corpus
 

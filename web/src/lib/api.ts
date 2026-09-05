@@ -1,4 +1,4 @@
-import type { QueryPlan, ResultEnvelope } from './types'
+import type { QueryPlan, ResultEnvelope, SectionRequest } from './types'
 
 export interface PlannerResponse {
   plan: QueryPlan | null
@@ -34,6 +34,19 @@ export async function exportEvidence(plan: QueryPlan, selections: { wmo: string;
   const response = await fetch(`${baseUrl}/v1/export`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan, selections }) })
   if (!response.ok) throw new ApiError(response.status, response.statusText)
   return response.blob()
+}
+
+export async function deriveSection(request: SectionRequest, signal?: AbortSignal): Promise<ResultEnvelope> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? ''
+  const response = await fetch(`${baseUrl}/v1/sections/derive`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request), signal,
+  })
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null)
+    const detail = typeof body === 'object' && body && 'detail' in body ? String(body.detail) : response.statusText
+    throw new ApiError(response.status, detail)
+  }
+  return response.json() as Promise<ResultEnvelope>
 }
 
 export async function executeQuery(plan: QueryPlan, signal?: AbortSignal): Promise<ResultEnvelope> {

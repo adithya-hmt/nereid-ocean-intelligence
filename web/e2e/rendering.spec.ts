@@ -33,5 +33,5 @@ test('records comparable actual-R3F empty and 100,000-point samples', async ({ p
   await mkdir(path.resolve(process.cwd(), '../docs/evidence'), { recursive: true })
   await writeFile(path.resolve(process.cwd(), '../docs/evidence/rendering.json'), `${JSON.stringify(evidence, null, 2)}\n`)
   expect(emptyCanvas.r3fFps).toBeGreaterThan(0)
-  expect(pointCloud.r3fFps).toBeGreaterThan(0)
+  expect(pointCloud.r3fFps).toBeGreaterThan(hardwareMode ? 30 : 0)
 })

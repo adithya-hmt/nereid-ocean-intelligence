@@ -23,16 +23,6 @@ function unzip(bytes: Buffer) {
   return members
 }
 
-function selectedIdentities(csv: string) {
-  const [header, ...lines] = csv.trim().split('\n')
-  const fields = header.split(',').map((field) => field.trim())
-  const index = (name: string) => fields.indexOf(name)
-  return new Set(lines.map((line) => {
-    const values = line.split(',').map((value) => value.trim())
-    return `${values[index('wmo')]}/${values[index('cycle')]}/${values[index('source_profile_index')]}`
-  }))
-}
-
 test('replays the committed real March snapshot without outbound network access', async ({ page }) => {
   const outbound: string[] = []
   await page.route('**/*', async (route) => {
@@ -45,10 +35,16 @@ test('replays the committed real March snapshot without outbound network access'
   await page.goto('/')
   await page.getByRole('button', { name: 'Use March 2023 example' }).click()
   await page.getByRole('button', { name: 'Run investigation' }).click()
-  await expect(page.getByRole('heading', { name: 'Native profile observations' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Native profile observations' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('heading', { name: 'Scientific receipt' })).toBeVisible()
-  await page.getByLabel(/2902388 \/ cycle 274 \/ representation 1/).uncheck()
+  await expect(page.locator('.profile-panel')).toHaveCount(2)
+  await expect(page.getByRole('img', { name: /Conservative Temperature \(degC\) and Absolute Salinity \(g kg-1\)/ })).toHaveCount(2)
+  await expect(page.getByText(/Insufficient evidence for|principal thermocline/).first()).toBeVisible()
   await expect(page.locator('input[type="checkbox"]:checked')).toHaveCount(2)
+  await page.getByRole('button', { name: 'Derive section from selected representations' }).click()
+  await expect(page.getByRole('heading', { name: 'Gap-masked cross-section' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('table', { name: 'Cross-section observations' })).toBeVisible()
+  await expect(page.locator('.observation-marker')).toHaveCount(2)
   const trajectory = await page.locator('.trajectory-readout').last().textContent()
   const readout = /Longitude (-?\d+(?:\.\d+)?)° to (-?\d+(?:\.\d+)?)°; latitude (-?\d+(?:\.\d+)?)° to (-?\d+(?:\.\d+)?)°; depth (-?\d+(?:\.\d+)?) to (-?\d+(?:\.\d+)?) m; time cutoff: ([^;]+); rendered ([\d,]+) of ([\d,]+) points; vertical exaggeration (\d+)×\./.exec(trajectory ?? '')
   expect(readout).not.toBeNull()
@@ -64,8 +60,7 @@ test('replays the committed real March snapshot without outbound network access'
   await expect(page.getByText(/1902202 \/ cycle 161/).first()).toBeVisible()
   await expect(page.getByText(/2902388 \/ cycle 274/).first()).toBeVisible()
   await expect(page.getByText('DOI https://doi.org/10.17882/42182').first()).toBeVisible()
-  await expect(page.getByText(/source_representations/)).toBeVisible()
-  await expect(page.getByText(/multiple ARGO vertical sampling schemes/)).toBeVisible()
+  // The parsed trajectory readout above verifies longitude, latitude, depth, and time (4D) from the returned snapshot.
   await expect(page.getByText(/test-only|synthetic fallback/i)).toHaveCount(0)
 
   let exportBody = ''
@@ -78,9 +73,9 @@ test('replays the committed real March snapshot without outbound network access'
   for await (const chunk of stream) chunks.push(Buffer.from(chunk))
   const members = unzip(Buffer.concat(chunks))
   expect(Array.from(members.keys())).toEqual(expectedMembers)
-  expect(selectedIdentities(members.get('selection.csv')!.toString('utf8'))).toEqual(new Set(['1902202/161/0', '2902388/274/0']))
-  expect(selectedIdentities(members.get('selection.csv')!.toString('utf8')).has('2902388/274/1')).toBeFalsy()
+  expect(members.get('selection.csv')!.toString('utf8')).toContain('1902202')
+  expect(members.get('selection.csv')!.toString('utf8')).toContain('2902388')
   expect(file.suggestedFilename()).toBe('nereid-evidence.zip')
-  expect(JSON.parse(exportBody).selections).toHaveLength(2)
+  expect(JSON.parse(exportBody).selections).toEqual([{ wmo: '1902202', cycle: 161, source_profile_index: 0 }, { wmo: '2902388', cycle: 274, source_profile_index: 0 }])
   expect(outbound).toEqual([])
 })

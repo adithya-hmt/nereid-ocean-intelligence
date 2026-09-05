@@ -21,10 +21,24 @@ export interface Provenance { source_url: string; snapshot_doi: string; fetched_
 export interface QcSummary { retained: number; rejected: number }
 export interface MethodRecord { name: string; version: string; parameters: Record<string, unknown> }
 export interface SectionRequest { profile_ids: Array<ProfileIdentifier & { source_profile_index: number }>; qc_mode: QcPolicy; depth_step_m: number; max_time_gap_hours: number; max_distance_km: number }
+export interface ProfileMetric {
+  wmo: string
+  cycle: number
+  source_profile_index: number
+  name: string
+  value: number
+  depth_m: number
+  units: string
+  uncertainty_m: number
+  algorithm: string
+  parameters: Record<string, unknown>
+  quality_label: string
+}
+export interface ChartSpec { profile_metrics?: ProfileMetric[]; section?: Record<string, unknown>; [key: string]: unknown }
 export interface ResultEnvelope {
   query_plan: QueryPlan
   data: Record<string, unknown>[]
-  chart_spec: Record<string, unknown>[]
+  chart_spec: ChartSpec[]
   provenance: Provenance[]
   qc_summary: QcSummary
   methods: MethodRecord[]
