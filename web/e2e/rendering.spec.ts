@@ -24,9 +24,10 @@ async function sample(page: Page, benchmark: 'empty' | '100000') {
 test('records comparable actual-R3F empty and 100,000-point samples', async ({ page, browserName }) => {
   const emptyCanvas = await sample(page, 'empty')
   const pointCloud = await sample(page, '100000')
+  const hardwareMode = process.env.NEREID_BENCHMARK_GPU === '1'
   const evidence = {
     label: 'benchmark only — synthetic rows are never scientific results',
-    declared: { browser: browserName, hardware: 'Playwright benchmark runner; browser-reported capabilities are recorded separately as measured hardware.' },
+    declared: { browser: browserName, mode: hardwareMode ? 'headed system Chromium on DISPLAY=:0 / WAYLAND_DISPLAY=wayland-1' : 'headless bundled Chromium', executable: hardwareMode ? '/usr/bin/chromium' : 'Playwright bundled Chromium', hardware: 'Browser-reported capabilities are recorded separately as measured hardware.' },
     measured: { measurement: 'R3F useFrame callbacks while the benchmark probe invalidated Canvas frameloop=demand for five seconds.', emptyCanvas, pointCloud },
   }
   await mkdir(path.resolve(process.cwd(), '../docs/evidence'), { recursive: true })
