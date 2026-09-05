@@ -1,1 +1,25 @@
 .worktrees/
+
+# Environment and runtime data
+.env
+.env.local
+.env.*.local
+data/snapshots/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Node and Next.js
+node_modules/
+.next/
+out/
+coverage/
+
+# Test and editor artifacts
+playwright-report/
+test-results/
+*.log
+.DS_Store

@@ -1,0 +1,8 @@
+{
+  "name": "nereid",
+  "private": true,
+  "scripts": {
+    "test": "pnpm --dir web test",
+    "lint": "pnpm --dir web lint"
+  }
+}
