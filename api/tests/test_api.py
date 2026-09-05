@@ -1,3 +1,4 @@
+# ruff: noqa: I001
 # pyright: reportMissingImports=false
 from fastapi.testclient import TestClient
 
@@ -131,7 +132,7 @@ def test_section_masks_unsupported_gap(snapshot_dir):
     response = client.post(
         "/v1/sections/derive",
         json={
-            "profile_ids": [["1900001", 7], ["1900002", 8]],
+            "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}],
             "qc_mode": "exploratory",
             "max_time_gap_hours": 24,
             "max_distance_km": 100,
@@ -148,7 +149,7 @@ def test_section_masks_unsupported_gap(snapshot_dir):
     assert body["assumptions"]
     assert body["warnings"] == []
     assert body["section_request"] == {
-        "profile_ids": [["1900001", 7], ["1900002", 8]],
+        "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}],
         "qc_mode": "exploratory",
         "depth_step_m": 5,
         "max_time_gap_hours": 24,

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from nereid_api.models import QcPolicy, QueryPlan
+from nereid_api.models import ProfileIdentifier, QcPolicy, QueryPlan
 from nereid_api.store import ArgoStore, SnapshotUnavailable
 
 
@@ -100,7 +100,7 @@ def test_get_profile_and_compare_profiles_apply_qc_policy(snapshot_dir):
 
     research_rows = store.get_profile("1900001", 7, QcPolicy.RESEARCH)
     comparison_rows = store.compare_profiles(
-        [("1900001", 7), ("1900002", 8)], QcPolicy.EXPLORATORY
+        [ProfileIdentifier(wmo="1900001", cycle=7, source_profile_index=0), ProfileIdentifier(wmo="1900002", cycle=8, source_profile_index=0)], _plan(qc_mode="exploratory")
     )
 
     assert {row["wmo"] for row in research_rows} == {"1900001"}

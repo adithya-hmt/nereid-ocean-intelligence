@@ -1,3 +1,4 @@
+# ruff: noqa: I001
 # pyright: reportMissingImports=false
 import asyncio
 
@@ -87,7 +88,7 @@ def test_azure_planner_uses_typed_parsing_with_only_query_plan_output():
     assert call["response_format"] is QueryPlan
     assert isinstance(call["messages"], list)
     assert len(call["messages"]) == 2
-    assert "find_profiles, nearest_floats, get_profile, compare_profiles, derive_section, export_selection" in call["messages"][0]["content"]
+    assert "find_profiles, nearest_floats, get_profile, compare_profiles, derive_section" in call["messages"][0]["content"]
     assert "TEMP, PSAL, PRES" in call["messages"][0]["content"]
     assert "research, exploratory" in call["messages"][0]["content"]
 

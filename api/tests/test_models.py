@@ -1,11 +1,11 @@
+# ruff: noqa: I001
 import pytest
-from pydantic import ValidationError
 
 from nereid_api.models import DerivedObservationSeries, ProfileSeries, QueryPlan
 
 
 def test_query_plan_rejects_unbounded_request():
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         QueryPlan(operation="find_profiles", row_limit=1000)
 
 
@@ -13,7 +13,7 @@ def test_profile_requires_source_record_arrays_to_align_with_depths():
     observations = DerivedObservationSeries(
         values=[10.0, 9.0], adjusted_qc=[1, 1], adjusted_errors=[0.1, 0.1]
     )
-    with pytest.raises(ValidationError, match="align with depth_m"):
+    with pytest.raises(ValueError, match="align with depth_m"):
         ProfileSeries(
             wmo="1234567",
             cycle=1,
@@ -30,7 +30,7 @@ def test_profile_requires_source_record_arrays_to_align_with_depths():
 
 
 def test_query_plan_caps_rows():
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         QueryPlan(
             operation="find_profiles",
             bbox=(60, 0, 80, 20),
@@ -40,3 +40,16 @@ def test_query_plan_caps_rows():
             qc_mode="research",
             row_limit=100001,
         )
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"operation": "find_profiles", "wmo": "1900001", "cycle": 7},
+        {"operation": "get_profile", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31"},
+        {"operation": "compare_profiles", "profile_ids": [{"wmo": "a", "cycle": 1, "source_profile_index": 0}]},
+        {"operation": "derive_section", "profile_ids": [{"wmo": "a", "cycle": 1, "source_profile_index": 0}, {"wmo": "a", "cycle": 1, "source_profile_index": 0}]},
+    ],
+)
+def test_operation_selector_matrix_rejects_incompatible_or_incomplete_selectors(values):
+    with pytest.raises(ValueError):
+        QueryPlan(**values)

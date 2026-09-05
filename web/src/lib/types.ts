@@ -1,6 +1,8 @@
-export type Operation = 'find_profiles' | 'nearest_floats' | 'get_profile' | 'compare_profiles' | 'derive_section' | 'export_selection'
+export type Operation = 'find_profiles' | 'nearest_floats' | 'get_profile' | 'compare_profiles' | 'derive_section'
 export type Parameter = 'TEMP' | 'PSAL' | 'PRES'
 export type QcPolicy = 'research' | 'exploratory'
+
+export interface ProfileIdentifier { wmo: string; cycle: number; source_profile_index?: number }
 
 export interface QueryPlan {
   operation: Operation
@@ -11,6 +13,7 @@ export interface QueryPlan {
   qc_mode: QcPolicy
   wmo?: string
   cycle?: number
+  profile_ids?: ProfileIdentifier[]
   row_limit: number
 }
 

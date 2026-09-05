@@ -45,11 +45,10 @@ class AzurePlanner:
                         "content": (
                             "Translate the user's question into exactly one QueryPlan. "
                             "Allowed operations: find_profiles, nearest_floats, get_profile, "
-                            "compare_profiles, derive_section, export_selection. Allowed parameters: "
+                            "compare_profiles, derive_section. Allowed parameters: "
                             "TEMP, PSAL, PRES. Allowed QC modes: research, exploratory. Use only these "
                             "values and the QueryPlan row limits. Every geographic query must include a "
-                            "bounded bbox and start and end dates; profile queries must include WMO and "
-                            "cycle. Do not produce SQL, analytics, measurements, conclusions, or scientific claims."
+                            "bounded bbox and start and end dates; get_profile queries must include WMO and cycle; compare_profiles and derive_section must include 2–100 complete profile_ids. Do not produce SQL, analytics, measurements, conclusions, or scientific claims."
                         ),
                     },
                     {"role": "user", "content": question},

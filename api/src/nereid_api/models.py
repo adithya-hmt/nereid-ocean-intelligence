@@ -8,40 +8,48 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-
-Operation = Literal[
-    "find_profiles",
-    "nearest_floats",
-    "get_profile",
-    "compare_profiles",
-    "derive_section",
-    "export_selection",
-]
+Operation = Literal["find_profiles", "nearest_floats", "get_profile", "compare_profiles", "derive_section"]
 Parameter = Literal["TEMP", "PSAL", "PRES"]
 
 
 class QcPolicy(StrEnum):
-    """Observation quality policy applied before scientific calculations."""
-
     RESEARCH = "research"
     EXPLORATORY = "exploratory"
+
+
+class ProfileIdentifier(BaseModel):
+    """One preserved ARGO representation; index is required where lanes matter."""
+
+    model_config = ConfigDict(extra="forbid")
+    wmo: str = Field(min_length=1)
+    cycle: int = Field(ge=0)
+    source_profile_index: int | None = Field(default=None, ge=0)
 
 
 class SectionRequest(BaseModel):
     """Complete bounded controls needed to replay one derived section."""
 
-    profile_ids: list[tuple[str, int]] = Field(min_length=2, max_length=100)
+    model_config = ConfigDict(extra="forbid")
+    profile_ids: list[ProfileIdentifier] = Field(min_length=2, max_length=100)
     qc_mode: QcPolicy = QcPolicy.RESEARCH
     depth_step_m: float = Field(default=10, gt=0, le=100)
     max_time_gap_hours: float = Field(default=168, gt=0, le=24 * 31)
     max_distance_km: float = Field(default=500, gt=0, le=2_000)
+
+    @model_validator(mode="after")
+    def require_unique_representations(self) -> "SectionRequest":
+        identities = [(item.wmo, item.cycle, item.source_profile_index) for item in self.profile_ids]
+        if len(identities) != len(set(identities)):
+            raise ValueError("profile_ids must be unique")
+        if any(item.source_profile_index is None for item in self.profile_ids):
+            raise ValueError("section profile_ids require source_profile_index")
+        return self
 
 
 class QueryPlan(BaseModel):
     """A bounded, allow-listed request that can be executed deterministically."""
 
     model_config = ConfigDict(extra="forbid")
-
     operation: Operation
     bbox: tuple[float, float, float, float] | None = None
     start_date: date | None = None
@@ -50,28 +58,37 @@ class QueryPlan(BaseModel):
     qc_mode: QcPolicy = QcPolicy.RESEARCH
     wmo: str | None = None
     cycle: int | None = Field(default=None, ge=0)
+    profile_ids: list[ProfileIdentifier] = Field(default_factory=list, max_length=100)
     row_limit: Annotated[int, Field(ge=1, le=100_000)] = 10_000
 
     @model_validator(mode="after")
-    def require_bounded_selector(self) -> "QueryPlan":
-        geographic_window = all(
-            value is not None for value in (self.bbox, self.start_date, self.end_date)
-        )
-        profile_selector = self.wmo is not None and self.cycle is not None
-        if not (geographic_window or profile_selector):
-            raise ValueError(
-                "query plan requires bbox, start_date, and end_date, or wmo and cycle"
-            )
-        if self.start_date and self.end_date and self.start_date > self.end_date:
+    def validate_operation_selector(self) -> "QueryPlan":
+        geographic = self.bbox is not None or self.start_date is not None or self.end_date is not None
+        complete_geographic = self.bbox is not None and self.start_date is not None and self.end_date is not None
+        single_profile = self.wmo is not None or self.cycle is not None
+        complete_single_profile = self.wmo is not None and self.cycle is not None
+        if self.start_date is not None and self.end_date is not None and self.start_date > self.end_date:
             raise ValueError("start_date must not be after end_date")
         if self.bbox:
             west, south, east, north = self.bbox
-            if not (-180 <= west <= 180 and -180 <= east <= 180):
-                raise ValueError("bbox longitude values must be between -180 and 180")
-            if not (-90 <= south <= 90 and -90 <= north <= 90):
-                raise ValueError("bbox latitude values must be between -90 and 90")
+            if not (-180 <= west <= 180 and -180 <= east <= 180) or not (-90 <= south <= 90 and -90 <= north <= 90):
+                raise ValueError("bbox coordinates are out of range")
             if west >= east or south >= north:
                 raise ValueError("bbox must have west < east and south < north")
+        if self.operation in {"find_profiles", "nearest_floats"}:
+            if not complete_geographic or single_profile or self.profile_ids:
+                raise ValueError(f"{self.operation} requires bbox, start_date, and end_date only")
+        elif self.operation == "get_profile":
+            if not complete_single_profile or geographic or self.profile_ids:
+                raise ValueError("get_profile requires exactly wmo and cycle")
+        else:
+            identities = [(item.wmo, item.cycle, item.source_profile_index) for item in self.profile_ids]
+            if geographic or single_profile or not (2 <= len(self.profile_ids) <= 100):
+                raise ValueError(f"{self.operation} requires 2–100 profile_ids only")
+            if len(identities) != len(set(identities)):
+                raise ValueError("profile_ids must be unique")
+            if any(item.source_profile_index is None for item in self.profile_ids):
+                raise ValueError(f"{self.operation} profile_ids require source_profile_index")
         return self
 
 
@@ -94,16 +111,12 @@ class MethodRecord(BaseModel):
 
 
 class DataMode(StrEnum):
-    """ARGO profile processing state retained with every scientific input."""
-
     REAL_TIME = "R"
     DELAYED = "D"
     ADJUSTED_REAL_TIME = "A"
 
 
 class ObservationSeries(BaseModel):
-    """Raw and adjusted values plus their per-level ARGO quality metadata."""
-
     raw_values: list[float | None]
     raw_qc: list[int | None]
     adjusted_values: list[float | None]
@@ -112,16 +125,12 @@ class ObservationSeries(BaseModel):
 
 
 class DerivedObservationSeries(BaseModel):
-    """TEOS-10 values with the adjusted ARGO QC and error that qualified them."""
-
     values: list[float | None]
     adjusted_qc: list[int | None]
     adjusted_errors: list[float | None]
 
 
 class ProfileSeries(BaseModel):
-    """A source-faithful profile whose observation arrays share native depth levels."""
-
     wmo: str
     cycle: int = Field(ge=0)
     depth_m: list[float]
@@ -136,15 +145,13 @@ class ProfileSeries(BaseModel):
 
     @model_validator(mode="after")
     def require_observation_alignment(self) -> "ProfileSeries":
-        level_count = len(self.depth_m)
+        count = len(self.depth_m)
         for name in ("conservative_temperature", "absolute_salinity"):
-            observations = getattr(self, name)
             for field_name in ("values", "adjusted_qc", "adjusted_errors"):
-                if len(getattr(observations, field_name)) != level_count:
+                if len(getattr(getattr(self, name), field_name)) != count:
                     raise ValueError(f"{name}.{field_name} must align with depth_m")
-        for field_name in ("pressure_adjusted_qc", "pressure_adjusted_errors"):
-            if len(getattr(self, field_name)) != level_count:
-                raise ValueError(f"{field_name} must align with depth_m")
+        if len(self.pressure_adjusted_qc) != count or len(self.pressure_adjusted_errors) != count:
+            raise ValueError("pressure_adjusted fields must align with depth_m")
         return self
 
 
