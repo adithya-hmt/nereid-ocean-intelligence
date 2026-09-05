@@ -179,3 +179,58 @@ Run pipeline/API/web unit suites, lint, build, all Playwright, headed GPU benchm
 - [ ] **Step 7: Commit and final review**
 
 Commit `fix: complete the linked scientific workflow`. Write `final-r3-report.md`, generate a full `7ef7dee...HEAD` review package, and repeat independent Standards/Spec review. Fix all Critical/Important findings; record minor findings without widening scope.
+
+---
+
+### Task R4: Close final scientific/API invariants
+
+**Files:**
+- Modify: `api/src/nereid_api/store.py`
+- Modify: `api/src/nereid_api/service.py`
+- Modify: `api/src/nereid_api/analytics.py`
+- Modify: `api/tests/test_store.py`
+- Modify: `api/tests/test_api.py`
+- Modify: `api/tests/test_analytics.py`
+
+- [ ] **Step 1: Add mixed-QC and parameter-mask regressions**
+
+Prove TEMP-only research queries with salinity QC 3/4 never return Conservative Temperature derived from that salinity. Null every unrequested variable value/QC/error regardless of whether its QC is 1, 2, 3, 4, missing, or invalid. Compute thermocline only when TEMP is requested and salinity gradient only when PSAL is requested; PRES-only plans produce no variable metrics.
+
+- [ ] **Step 2: Preserve native continuity for thermocline windows**
+
+Build three-level regression windows before dropping QC-invalid native levels, so an invalid level breaks adjacency. Add a profile with valid levels on either side of one rejected native level and prove no window bridges it.
+
+- [ ] **Step 3: Add adjusted-error receipt warnings**
+
+For each selected representation and requested pressure/TEMP/PSAL field, warn when eligible measurements lack adjusted-error metadata. Keep available-count/max-error method parameters for complete metadata; do not invent uncertainty.
+
+- [ ] **Step 4: Enforce row limits for every operation**
+
+Apply row limits to get-profile and nearest-level outputs. Preflight exact compare/section operations against the QC-eligible level count and return HTTP 422 when the exact selection exceeds `row_limit`, rather than returning partial representations. Add boundary tests for each operation.
+
+- [ ] **Step 5: Verify and commit**
+
+Run focused and full API tests, then commit `fix: close scientific query invariants` and review the scoped diff.
+
+---
+
+### Task R5: Make metric and section rendering scientifically exact
+
+**Files:**
+- Modify: `web/src/components/ProfileMetrics.tsx`
+- Modify: `web/src/components/CrossSectionPlot.tsx`
+- Modify: `web/src/components/InvestigationWorkspace.test.tsx`
+- Modify: `web/e2e/winning-flow.spec.ts`
+- Modify: `web/src/lib/types.ts`
+
+- [ ] **Step 1: Use canonical metric identifiers**
+
+Match API IDs `principal_thermocline` and `strongest_salinity_gradient`; keep human labels separate. Unit tests and offline E2E must require at least one real metric from the committed snapshot rather than accepting a false insufficient-evidence fallback.
+
+- [ ] **Step 2: Preserve exact representation and gap semantics**
+
+Type and render observation coordinates with `source_profile_index` and `vertical_sampling_scheme`. Associate each cell with its own gap index/reason instead of `masked_gaps[0]`. Label interpolated non-null cells as derived/interpolated, never observed; observation markers alone are observed.
+
+- [ ] **Step 3: Verify and commit**
+
+Run focused web tests, full web tests/lint/build/offline Playwright, GPU benchmark last, reconcile evidence, commit `fix: render exact scientific evidence`, then repeat the full independent Standards/Spec review.
