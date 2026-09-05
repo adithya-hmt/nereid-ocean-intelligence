@@ -1,3 +1,5 @@
+# ruff: noqa: I001
+# pyright: reportMissingImports=false
 """Validated contracts for bounded scientific investigations."""
 
 from datetime import date, datetime
@@ -23,6 +25,16 @@ class QcPolicy(StrEnum):
 
     RESEARCH = "research"
     EXPLORATORY = "exploratory"
+
+
+class SectionRequest(BaseModel):
+    """Complete bounded controls needed to replay one derived section."""
+
+    profile_ids: list[tuple[str, int]] = Field(min_length=2, max_length=100)
+    qc_mode: QcPolicy = QcPolicy.RESEARCH
+    depth_step_m: float = Field(default=10, gt=0, le=100)
+    max_time_gap_hours: float = Field(default=168, gt=0, le=24 * 31)
+    max_distance_km: float = Field(default=500, gt=0, le=2_000)
 
 
 class QueryPlan(BaseModel):
@@ -149,4 +161,5 @@ class ResultEnvelope(BaseModel):
     methods: list[MethodRecord]
     assumptions: list[str]
     warnings: list[str]
+    section_request: SectionRequest | None = None
     answer: str | None = None

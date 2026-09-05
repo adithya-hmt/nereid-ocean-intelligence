@@ -90,6 +90,7 @@ def test_section_masks_unsupported_gap(snapshot_dir):
             "qc_mode": "exploratory",
             "max_time_gap_hours": 24,
             "max_distance_km": 100,
+            "depth_step_m": 5,
         },
     )
 
@@ -101,6 +102,13 @@ def test_section_masks_unsupported_gap(snapshot_dir):
     assert body["methods"]
     assert body["assumptions"]
     assert body["warnings"] == []
+    assert body["section_request"] == {
+        "profile_ids": [["1900001", 7], ["1900002", 8]],
+        "qc_mode": "exploratory",
+        "depth_step_m": 5,
+        "max_time_gap_hours": 24,
+        "max_distance_km": 100,
+    }
     section = body["data"][0]
     assert len(section["observation_coordinates"]) == 2
     assert section["masked_gaps"] == [{"left_profile_index": 0, "right_profile_index": 1, "reason": "time_gap"}]

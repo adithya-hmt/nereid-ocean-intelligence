@@ -9,8 +9,8 @@ from typing import Annotated
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from nereid_api.models import QcPolicy, QueryPlan, ResultEnvelope
-from nereid_api.service import InvestigationService, SectionRequest
+from nereid_api.models import QcPolicy, QueryPlan, ResultEnvelope, SectionRequest
+from nereid_api.service import InvestigationService
 from nereid_api.store import ArgoStore, SnapshotUnavailable
 
 

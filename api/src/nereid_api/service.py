@@ -10,7 +10,7 @@ from math import asin, cos, radians, sin, sqrt
 from typing import Any, cast
 
 import numpy as np
-from pydantic import BaseModel, Field, JsonValue
+from pydantic import JsonValue
 
 from nereid_api.analytics import principal_thermocline, strongest_salinity_gradient
 from nereid_api.models import (
@@ -23,18 +23,9 @@ from nereid_api.models import (
     QcSummary,
     QueryPlan,
     ResultEnvelope,
+    SectionRequest,
 )
 from nereid_api.store import ArgoStore
-
-
-class SectionRequest(BaseModel):
-    """Bounded controls for deriving a section from selected local profiles."""
-
-    profile_ids: list[tuple[str, int]] = Field(min_length=2, max_length=100)
-    qc_mode: QcPolicy = QcPolicy.RESEARCH
-    depth_step_m: float = Field(default=10, gt=0, le=100)
-    max_time_gap_hours: float = Field(default=168, gt=0, le=24 * 31)
-    max_distance_km: float = Field(default=500, gt=0, le=2_000)
 
 
 def _json_value(value: Any) -> Any:
@@ -251,4 +242,5 @@ class InvestigationService:
             ],
             assumptions=["Vertical interpolation is limited to each profile's native depth range."],
             warnings=[] if rows else ["No matching profiles; widen one bounded filter."],
+            section_request=request,
         )
