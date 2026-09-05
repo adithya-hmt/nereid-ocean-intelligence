@@ -273,3 +273,17 @@ Profile panels must retain rows when only TEMP or only PSAL is requested and ren
 - [ ] **Step 6: Correct evidence and warnings**
 
 Use `run_plan` in the documented latency command and either restore the truthful multiple-sampling-scheme API warning or remove the claim. Run scoped pipeline/API/web suites, offline Playwright, GPU benchmark last, evaluator expected blocked, reconcile exact evidence, and commit `fix: enforce final scientific identity contracts`.
+
+---
+
+### Task R7: Close receipt, planner, and geographic edge cases
+
+- [ ] Include all four identity components in per-representation adjusted-error keys and warnings.
+- [ ] Recompute export methods, chart metrics, warnings, provenance, and QC counts from only the selected representations; no absent representation may remain in `methods.json`.
+- [ ] Quarantine requested raw pressure by its own QC policy exactly like raw TEMP/PSAL; add API/export tests.
+- [ ] Return an explicit `vertical_gap` reason for every section sample outside valid vertical support.
+- [ ] Make every corpus question explicitly state all expected selectors, including direction and every compared representation; align the planner prompt with required direction.
+- [ ] Rank nearest profiles using a spherical/geodesic distance rather than squared degree differences; add a high-latitude ordering regression.
+- [ ] Treat empty UI parameters as the server's canonical all-parameter default.
+- [ ] Make export ordering deterministic across direction, representation, native level, and other identity ties.
+- [ ] Run focused/full API/web validation, lint/build/offline replay as applicable, reconcile exact evidence, and commit `fix: close receipt and planner edge cases`.
