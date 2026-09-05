@@ -35,7 +35,7 @@ Run on 2026-09-05 after R11 complete export-evidence verification:
 
 ```bash
 uv run --directory pipeline pytest -q  # passed: 7 tests (186 warnings)
-uv run --directory api pytest -q  # passed: 94 tests (2 warnings)
+uv run --directory api pytest -q  # passed: 95 tests (2 warnings)
 uv run --directory api ruff check src/nereid_api/export.py tests/test_export.py  # passed
 npm --prefix web test -- --run  # passed: 9 files / 34 tests
 npm --prefix web run lint  # passed
