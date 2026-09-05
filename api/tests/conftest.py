@@ -29,9 +29,9 @@ def snapshot_dir(tmp_path: Path) -> Path:
     )
     rows = []
     for wmo, cycle in (("1900001", 7), ("1900002", 8)):
-        for pressure, qc in zip(
+        for level_index, (pressure, qc) in enumerate(zip(
             (0, 10, 20, 30, 40, 60), (1, 2, 1, 3, 4, 1), strict=True
-        ):
+        ), start=0):
             rows.append(
                 {
                     "wmo": wmo,
@@ -39,6 +39,7 @@ def snapshot_dir(tmp_path: Path) -> Path:
                     "direction": "A",
                     "source_profile_index": 0,
                     "vertical_sampling_scheme": "primary",
+                    "level_index": level_index,
                     "pressure_raw": float(pressure),
                     "pressure_adjusted": float(pressure),
                     "pressure_best": float(pressure),

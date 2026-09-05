@@ -351,3 +351,43 @@ def test_export_rejects_derive_section_plan_before_indexing_section_data(snapsho
     response = TestClient(create_app(snapshot_dir)).post("/v1/export", json={"plan": plan, "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}]})
     assert response.status_code == 422
     assert response.json()["detail"] == "export_selection supports level-row query plans only"
+
+
+def test_section_marks_rejected_native_middle_level_as_vertical_gap(snapshot_dir):
+    """QC filtering must not make nonadjacent native levels interpolable."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    levels = pq.read_table(snapshot_dir / "levels.parquet").to_pylist()
+    for row in levels:
+        if row["level_index"] == 1:
+            row["pressure_adjusted_qc"] = 4
+    pq.write_table(pa.Table.from_pylist(levels), snapshot_dir / "levels.parquet")
+    client = TestClient(create_app(snapshot_dir))
+    response = client.post("/v1/sections/derive", json={
+        "profile_ids": [{"wmo": "1900001", "cycle": 7, "direction": "A", "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "direction": "A", "source_profile_index": 0}],
+        "qc_mode": "research", "depth_step_m": 5, "max_vertical_gap_m": 100, "max_time_gap_hours": 500,
+    })
+    assert response.status_code == 200
+    cell = next(cell for cell in response.json()["data"][0]["section_cells"] if cell["depth_m"] == 5)
+    assert cell["temperature"] is None
+    assert cell["salinity"] is None
+    assert cell["mask_reason"] == "vertical_gap"
+
+
+def test_exact_selection_keeps_ascending_and_descending_collision_distinct(snapshot_dir):
+    """Direction is part of the source-local representation identity."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    profiles = pq.read_table(snapshot_dir / "profiles.parquet").to_pylist()
+    descending_profile = {**profiles[0], "direction": "D"}
+    pq.write_table(pa.Table.from_pylist([*profiles, descending_profile]), snapshot_dir / "profiles.parquet")
+    levels = pq.read_table(snapshot_dir / "levels.parquet").to_pylist()
+    pq.write_table(pa.Table.from_pylist([*levels, *[{**row, "direction": "D"} for row in levels if row["wmo"] == "1900001"]]), snapshot_dir / "levels.parquet")
+    response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json={
+        "operation": "compare_profiles", "parameters": ["TEMP"], "row_limit": 100,
+        "profile_ids": [{"wmo": "1900001", "cycle": 7, "direction": "A", "source_profile_index": 0}, {"wmo": "1900001", "cycle": 7, "direction": "D", "source_profile_index": 0}],
+    })
+    assert response.status_code == 200
+    assert {row["direction"] for row in response.json()["data"]} == {"A", "D"}

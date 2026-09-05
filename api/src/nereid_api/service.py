@@ -91,13 +91,15 @@ def _distance_km(left: dict[str, Any], right: dict[str, Any]) -> float:
 
 def _interpolate(levels: list[dict[str, Any]], depth_m: float, field: str, max_gap_m: float) -> tuple[float | None, str | None]:
     """Return only exact or adjacent bounded interpolation; never bridge a gap."""
-    valid = sorted((float(row["depth_m"]), row[field]) for row in levels if row[field] is not None)
-    for native_depth, value in valid:
+    valid = sorted((float(row["depth_m"]), row[field], int(row["level_index"])) for row in levels if row[field] is not None)
+    for native_depth, value, _level_index in valid:
         if native_depth == depth_m:
             return float(value), None
-    for (lower_depth, lower), (upper_depth, upper) in pairwise(valid):
+    for (lower_depth, lower, lower_index), (upper_depth, upper, upper_index) in pairwise(valid):
         if lower_depth < depth_m < upper_depth:
-            if upper_depth - lower_depth > max_gap_m:
+            # A rejected native level is a physical discontinuity, even if the
+            # remaining depth bracket is shorter than the configurable bound.
+            if upper_depth - lower_depth > max_gap_m or upper_index != lower_index + 1:
                 return None, "vertical_gap"
             return float(lower + (upper - lower) * (depth_m - lower_depth) / (upper_depth - lower_depth)), None
     return None, None

@@ -64,8 +64,8 @@ test('replays the committed real March snapshot without outbound network access'
   expect(Number(total.replaceAll(',', ''))).toBeGreaterThanOrEqual(Number(rendered.replaceAll(',', '')))
   expect(Number(exaggeration)).toBeGreaterThanOrEqual(0)
   expect(Number.isNaN(Date.parse(cutoff))).toBeFalsy()
-  await expect(page.getByText(/1902202 \/ cycle 161/).first()).toBeVisible()
-  await expect(page.getByText(/2902388 \/ cycle 274/).first()).toBeVisible()
+  await expect(page.getByText(/1902202 \/ cycle 161 \/ A \/ representation 0/).first()).toBeVisible()
+  await expect(page.getByText(/2902388 \/ cycle 274 \/ A \/ representation 0/).first()).toBeVisible()
   await expect(page.getByText('DOI https://doi.org/10.17882/42182').first()).toBeVisible()
   // The parsed trajectory readout above verifies longitude, latitude, depth, and time (4D) from the returned snapshot.
   await expect(page.getByText(/test-only|synthetic fallback/i)).toHaveCount(0)
@@ -83,6 +83,6 @@ test('replays the committed real March snapshot without outbound network access'
   expect(members.get('selection.csv')!.toString('utf8')).toContain('1902202')
   expect(members.get('selection.csv')!.toString('utf8')).toContain('2902388')
   expect(file.suggestedFilename()).toBe('nereid-evidence.zip')
-  expect(JSON.parse(exportBody).selections).toEqual([{ wmo: '1902202', cycle: 161, source_profile_index: 0 }, { wmo: '2902388', cycle: 274, source_profile_index: 0 }])
+  expect(JSON.parse(exportBody).selections).toEqual([{ wmo: '1902202', cycle: 161, direction: 'A', source_profile_index: 0 }, { wmo: '2902388', cycle: 274, direction: 'A', source_profile_index: 0 }])
   expect(outbound).toEqual([])
 })

@@ -18,35 +18,35 @@ snapshot = Path('data/snapshots/indian-ocean-2023-03')
 print(pq.read_table(snapshot / 'profiles.parquet').num_rows, pq.read_table(snapshot / 'levels.parquet').num_rows)
 service = InvestigationService(ArgoStore(snapshot))
 plan = QueryPlan(operation='find_profiles', bbox=(60, 0, 80, 20), start_date='2023-03-01', end_date='2023-03-31', parameters=['TEMP', 'PSAL'])
-service.execute(plan); samples = []
+service.run_plan(plan); samples = []
 for _ in range(20):
-    start = perf_counter(); result = service.execute(plan); samples.append((perf_counter() - start) * 1000)
-print(len(result.data), len({(r['wmo'], r['cycle'], r['source_profile_index']) for r in result.data}), sorted(samples)[18])
+    start = perf_counter(); result = service.run_plan(plan); samples.append((perf_counter() - start) * 1000)
+print(len(result.data), len({(r['wmo'], r['cycle'], r['direction'], r['source_profile_index']) for r in result.data}), sorted(samples)[18])
 PY
 ```
 
-the snapshot had **3 source representations**, **1,999 normalized levels**, and the March 2023 bounded research query returned **1,700 QC-eligible levels / 3 source representations**. Its warm in-process p95 was **174.319 ms** (20 samples; maximum 318.281 ms) on `Linux forgebook 7.1.9-arch1-2 x86_64`. This is an in-process service measurement, not an HTTP end-to-end latency claim.
+the snapshot had **3 source representations**, **1,999 normalized levels**, and the March 2023 bounded research query returned **1,700 QC-eligible levels / 3 source representations**. Its warm in-process p95 was **157.265 ms** (20 samples; maximum 158.536 ms) on `Linux forgebook 7.1.9-arch1-2 x86_64`. This is an in-process service measurement, not an HTTP end-to-end latency claim.
 
 WMO 2902388/cycle 274 contains two source representations. `source_profile_index` and `vertical_sampling_scheme` remain in normalized levels, API data, profile metrics, receipt identity, and the export; no representation is merged or dropped. The API visibly warns that multiple vertical sampling schemes remain separate. Research mode permits only adjusted QC 1; exploratory mode may permit QC 2; QC 3/4 never enter outputs.
 
 ## Validation run
 
-Run on 2026-09-05 after R5 exact-rendering remediation:
+Run on 2026-09-05 after R6 native-gap remediation:
 
 ```bash
-uv run --project pipeline pytest pipeline/tests -v  # passed: 7 tests (186 warnings)
-uv run --project api pytest api/tests -v            # passed: 69 tests (2 warnings)
-pnpm --dir web test --run src/components/InvestigationWorkspace.test.tsx  # passed: 1 file / 8 tests
-pnpm --dir web test --run                           # passed: 7 files / 20 tests
-pnpm --dir web lint                                 # passed
-pnpm --dir web build                                # passed
-pnpm --dir web exec playwright test                 # passed: 2 tests
-NEREID_BENCHMARK_GPU=1 pnpm --dir web exec playwright test e2e/rendering.spec.ts  # passed: 1 test; run after all Playwright
+uv run --directory pipeline pytest -q  # passed: 7 tests (186 warnings)
+uv run --directory api pytest -q             # passed: 71 tests (2 warnings)
+npm --prefix web test -- --run src/components/InvestigationWorkspace.test.tsx  # passed: 1 file / 8 tests
+npm --prefix web test -- --run                           # passed: 7 files / 20 tests
+npm --prefix web run lint                                 # passed
+npm --prefix web run build                                # passed
+cd web && npx playwright test                 # passed: 2 tests
+NEREID_BENCHMARK_GPU=1 cd web && npx playwright test e2e/rendering.spec.ts  # passed: 1 test; run after all Playwright
 uv run --project api python docs/evidence/evaluate_queries.py
 # exits 2: planner evaluation BLOCKED: Azure configuration unavailable; no live score measured
 ```
 
-The full offline Playwright replay selects exactly `1902202/161/0` and `2902388/274/0`, renders two separate profile panels and at least one real committed-snapshot metric with its value, units, vertical uncertainty, method, and QC, derives a gap-masked section from those IDs, verifies longitude/latitude/depth/time trajectory metadata, and confirms the same two IDs are posted to the offline evidence export endpoint. Metric API identifiers are rendered only from the canonical `principal_thermocline` and `strongest_salinity_gradient` IDs; human labels are separate. The accessible section alternative retains every coordinate identity field, distinguishes duplicate WMO/cycle representations, reports each null cell's matching time/distance gap (or masked), and calls non-null cells interpolated derived rather than observed. The GPU benchmark was run last among browser measurements. `rendering.json` records Intel UHD Graphics 620 and an actual 100,000-point R3F result of **59.235 FPS** (139.6 ms initialization); the hardware-mode test requires at least 30 FPS. The default SwiftShader/headless mode requires only completion with a positive measured FPS, so it does not falsify the hardware target.
+The full offline Playwright replay selects exactly `1902202/161/A/0` and `2902388/274/A/0`, renders two separate profile panels and at least one real committed-snapshot metric with its value, units, vertical uncertainty, method, and QC, derives a gap-masked section from those IDs, verifies longitude/latitude/depth/time trajectory metadata, and confirms the same two IDs are posted to the offline evidence export endpoint. Metric API identifiers are rendered only from the canonical `principal_thermocline` and `strongest_salinity_gradient` IDs; human labels are separate. The accessible section alternative retains every coordinate identity field, distinguishes duplicate WMO/cycle representations, reports each null cell's matching time/distance gap (or masked), and calls non-null cells interpolated derived rather than observed. The GPU benchmark was run last among browser measurements. `rendering.json` records Intel UHD Graphics 620 and an actual 100,000-point R3F result of **59.499 FPS** (111.9 ms initialization); the hardware-mode test requires at least 30 FPS. The default SwiftShader/headless mode requires only completion with a positive measured FPS, so it does not falsify the hardware target.
 
 Tracked-file scanning found no high-confidence API key/private-key patterns. `pnpm --dir web licenses list` completed (955 output lines). `lens_diagnostics mode=all` could not be measured because the executable is unavailable in this environment. `git diff --check` passed.
 
