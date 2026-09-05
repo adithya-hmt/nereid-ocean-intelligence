@@ -133,7 +133,7 @@ def test_section_masks_unsupported_gap(snapshot_dir):
     response = client.post(
         "/v1/sections/derive",
         json={
-            "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}],
+            "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}],
             "qc_mode": "exploratory",
             "max_time_gap_hours": 24,
             "max_distance_km": 100,
@@ -150,11 +150,12 @@ def test_section_masks_unsupported_gap(snapshot_dir):
     assert body["assumptions"]
     assert body["warnings"] == []
     assert body["section_request"] == {
-        "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}],
+        "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}],
         "qc_mode": "exploratory",
         "depth_step_m": 5,
         "max_time_gap_hours": 24,
         "max_distance_km": 100,
+        "max_vertical_gap_m": 100.0,
     }
     section = body["data"][0]
     assert len(section["observation_coordinates"]) == 2
@@ -218,9 +219,9 @@ def test_missing_snapshot_returns_service_unavailable(tmp_path):
 def test_execute_dispatches_every_advertised_operation(snapshot_dir, operation):
     client = TestClient(create_app(snapshot_dir))
     if operation == "nearest_floats":
-        payload = {"operation": operation, "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP"], "row_limit": 1}
+        payload = {"operation": operation, "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP"], "row_limit": 10, "float_count": 1}
     else:
-        payload = {"operation": operation, "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}], "parameters": ["TEMP", "PSAL"]}
+        payload = {"operation": operation, "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}], "parameters": ["TEMP", "PSAL"]}
     response = client.post("/v1/query/execute", json=payload)
     assert response.status_code == 200
     body = response.json()
@@ -232,7 +233,7 @@ def test_execute_dispatches_every_advertised_operation(snapshot_dir, operation):
 
 def test_exact_comparison_refuses_missing_or_qc_empty_representation(snapshot_dir):
     client = TestClient(create_app(snapshot_dir))
-    payload = {"operation": "compare_profiles", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "missing", "cycle": 8, "source_profile_index": 0}], "parameters": ["TEMP"]}
+    payload = {"operation": "compare_profiles", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "missing", "cycle": 8, "source_profile_index": 0, "direction": "A"}], "parameters": ["TEMP"]}
     response = client.post("/v1/query/execute", json=payload)
     assert response.status_code == 422
     assert "missing requested representation" in response.json()["detail"]
@@ -261,10 +262,10 @@ def test_parameter_specific_qc_and_masking(snapshot_dir, parameters):
     "payload",
     [
         {"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31"},
-        {"operation": "nearest_floats", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31"},
-        {"operation": "get_profile", "wmo": "1900001", "cycle": 7},
-        {"operation": "compare_profiles", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}]},
-        {"operation": "derive_section", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}]},
+        {"operation": "nearest_floats", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "float_count": 1},
+        {"operation": "get_profile", "wmo": "1900001", "cycle": 7, "direction": "A"},
+        {"operation": "compare_profiles", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}]},
+        {"operation": "derive_section", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}]},
     ],
 )
 def test_operation_selector_matrix_accepts_each_valid_endpoint_form(snapshot_dir, payload):
@@ -282,7 +283,7 @@ def test_derive_uses_temp_and_salinity_research_policy_even_when_unrequested(sna
         row["temperature_adjusted_qc"] = 2
         row["salinity_adjusted_qc"] = 2
     pq.write_table(pa.Table.from_pylist(rows), levels_path)
-    payload = {"operation": "derive_section", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}], "parameters": parameters, "qc_mode": "research"}
+    payload = {"operation": "derive_section", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}], "parameters": parameters, "qc_mode": "research"}
     response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload)
     assert response.status_code == 422
     assert "insufficient or missing requested representation" in response.json()["detail"]
@@ -331,22 +332,22 @@ def test_requested_metric_gating_and_adjusted_error_warnings(snapshot_dir):
 
 @pytest.mark.parametrize("operation", ["get_profile", "nearest_floats"])
 def test_output_operations_apply_row_limit(snapshot_dir, operation):
-    payload = ({"operation": operation, "wmo": "1900001", "cycle": 7, "parameters": ["TEMP"], "row_limit": 1} if operation == "get_profile" else {"operation": operation, "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP"], "row_limit": 1})
+    payload = ({"operation": operation, "wmo": "1900001", "cycle": 7, "direction": "A", "parameters": ["TEMP"], "row_limit": 1} if operation == "get_profile" else {"operation": operation, "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP"], "row_limit": 10, "float_count": 1})
     response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload)
     assert response.status_code == 200
-    assert len(response.json()["data"]) == 1
+    assert len(response.json()["data"]) == (1 if operation == "get_profile" else 2)
 
 
 @pytest.mark.parametrize("operation", ["compare_profiles", "derive_section"])
 def test_exact_operations_refuse_selection_above_row_limit(snapshot_dir, operation):
-    payload = {"operation": operation, "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}], "parameters": ["TEMP", "PSAL"], "row_limit": 1}
+    payload = {"operation": operation, "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}], "parameters": ["TEMP", "PSAL"], "row_limit": 1}
     response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload)
     assert response.status_code == 422
     assert response.json()["detail"] == "exact selection exceeds row_limit"
 
 
 def test_export_rejects_derive_section_plan_before_indexing_section_data(snapshot_dir):
-    plan = {"operation": "derive_section", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}], "parameters": ["TEMP", "PSAL"]}
-    response = TestClient(create_app(snapshot_dir)).post("/v1/export", json={"plan": plan, "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}]})
+    plan = {"operation": "derive_section", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}], "parameters": ["TEMP", "PSAL"]}
+    response = TestClient(create_app(snapshot_dir)).post("/v1/export", json={"plan": plan, "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}]})
     assert response.status_code == 422
     assert response.json()["detail"] == "export_selection supports level-row query plans only"

@@ -5,7 +5,7 @@ const top = 20
 const plotWidth = 260
 const plotHeight = 80
 
-const coordinateIdentity = (coordinate: SectionObservationCoordinate) => `${coordinate.wmo} / cycle ${coordinate.cycle} / representation ${coordinate.source_profile_index} / ${coordinate.vertical_sampling_scheme}`
+const coordinateIdentity = (coordinate: SectionObservationCoordinate) => `${coordinate.wmo} / cycle ${coordinate.cycle} / ${coordinate.direction} / representation ${coordinate.source_profile_index} / ${coordinate.vertical_sampling_scheme}`
 const coordinateTitle = (coordinate: SectionObservationCoordinate) => `Observed coordinate: ${coordinateIdentity(coordinate)}; latitude ${coordinate.latitude}; longitude ${coordinate.longitude}; timestamp ${coordinate.timestamp}`
 const cellKey = (cell: SectionCell) => `${cell.left_profile_index}-${cell.right_profile_index}-${cell.depth_m}`
 const gapKey = (gap: Pick<MaskedGap, 'left_profile_index' | 'right_profile_index'>) => `${gap.left_profile_index}-${gap.right_profile_index}`
@@ -28,7 +28,7 @@ export function CrossSectionPlot({ result }: { result: ResultEnvelope }) {
   const representations = (cell: SectionCell) => [coordinates[cell.left_profile_index], coordinates[cell.right_profile_index]].filter((coordinate): coordinate is SectionObservationCoordinate => coordinate !== undefined).map(coordinateIdentity).join(' to ')
   const status = (cell: SectionCell) => {
     if (cell.temperature !== null || cell.salinity !== null) return 'interpolated derived'
-    const reason = gaps.get(gapKey(cell))
+    const reason = cell.mask_reason ?? gaps.get(gapKey(cell))
     return reason ? reason.replaceAll('_', ' ') : 'masked'
   }
 

@@ -37,6 +37,7 @@ class PlanResponse(BaseModel):
 class SelectedRepresentation(BaseModel):
     wmo: str
     cycle: int = Field(ge=0)
+    direction: Literal["A", "D"]
     source_profile_index: int = Field(ge=0)
 
 
@@ -122,10 +123,11 @@ def create_app(
         wmo: str,
         cycle: int,
         qc_mode: Annotated[QcPolicy, Query()] = QcPolicy.RESEARCH,
+        direction: Annotated[Literal["A", "D"], Query()] = "A",
     ) -> ResultEnvelope:
         if service is None:
             raise HTTPException(status_code=503, detail="ARGO snapshot is unavailable")
-        plan = QueryPlan(operation="get_profile", wmo=wmo, cycle=cycle, qc_mode=qc_mode)
+        plan = QueryPlan(operation="get_profile", wmo=wmo, cycle=cycle, direction=direction, qc_mode=qc_mode)
         return service.run_plan(plan)  # nosec B608: QueryPlan is validated; store binds every value.
 
     return app

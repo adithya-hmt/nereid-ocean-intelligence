@@ -15,8 +15,8 @@ class FakePlanner:
     async def plan(self, question):
         if question == "reject":
             raise PlannerRejected("rejected")
-        return QueryPlan(operation="get_profile", wmo="1902202", cycle=161)
+        return QueryPlan(operation="get_profile", wmo="1902202", cycle=161, direction='A')
 
 def test_score_compares_every_expected_filter_and_rejections():
-    cases = [{"question": "good", "expected": {"operation": "get_profile", "wmo": "1902202", "cycle": 161}}, {"question": "reject", "expected": "rejection"}, {"question": "good", "expected": {"operation": "get_profile", "wmo": "other", "cycle": 161}}]
+    cases = [{"question": "good", "expected": {"operation": "get_profile", "wmo": "1902202", "cycle": 161, "direction": "A"}}, {"question": "reject", "expected": "rejection"}, {"question": "good", "expected": {"operation": "get_profile", "wmo": "other", "cycle": 161, "direction": "A"}}]
     assert asyncio.run(evaluate.score(FakePlanner(), cases)) == (2, 3)

@@ -1,3 +1,4 @@
+# pyright: reportMissingImports=false
 # ruff: noqa: I001
 import pytest
 
@@ -46,8 +47,8 @@ def test_query_plan_caps_rows():
     [
         {"operation": "find_profiles", "wmo": "1900001", "cycle": 7},
         {"operation": "get_profile", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31"},
-        {"operation": "compare_profiles", "profile_ids": [{"wmo": "a", "cycle": 1, "source_profile_index": 0}]},
-        {"operation": "derive_section", "profile_ids": [{"wmo": "a", "cycle": 1, "source_profile_index": 0}, {"wmo": "a", "cycle": 1, "source_profile_index": 0}]},
+        {"operation": "compare_profiles", "profile_ids": [{"wmo": "a", "cycle": 1, "source_profile_index": 0, "direction": "A"}]},
+        {"operation": "derive_section", "profile_ids": [{"wmo": "a", "cycle": 1, "source_profile_index": 0, "direction": "A"}, {"wmo": "a", "cycle": 1, "source_profile_index": 0, "direction": "A"}]},
     ],
 )
 def test_operation_selector_matrix_rejects_incompatible_or_incomplete_selectors(values):

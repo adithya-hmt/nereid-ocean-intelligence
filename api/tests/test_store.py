@@ -89,7 +89,7 @@ def test_find_profiles_applies_date_filter_with_matching_bbox(snapshot_dir):
 def test_selected_candidate_counts_are_bounded_and_ignore_pagination(snapshot_dir):
     store = ArgoStore(snapshot_dir)
     plan = _plan(row_limit=1)
-    identities = {("1900001", 7, 0)}
+    identities = {("1900001", 7, "A", 0)}
 
     assert store.count_selected_candidates(plan, identities) == 6
     assert store.count_selected_qc_eligible(plan, identities) == 2
@@ -100,7 +100,7 @@ def test_get_profile_and_compare_profiles_apply_qc_policy(snapshot_dir):
 
     research_rows = store.get_profile("1900001", 7, QcPolicy.RESEARCH)
     comparison_rows = store.compare_profiles(
-        [ProfileIdentifier(wmo="1900001", cycle=7, source_profile_index=0), ProfileIdentifier(wmo="1900002", cycle=8, source_profile_index=0)], _plan(qc_mode="exploratory")
+        [ProfileIdentifier(wmo="1900001", cycle=7, direction="A", source_profile_index=0), ProfileIdentifier(wmo="1900002", cycle=8, direction="A", source_profile_index=0)], _plan(qc_mode="exploratory")
     )
 
     assert {row["wmo"] for row in research_rows} == {"1900001"}

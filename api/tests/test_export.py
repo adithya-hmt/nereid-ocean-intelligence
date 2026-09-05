@@ -20,7 +20,7 @@ from nereid_api.models import (
 
 def test_export_is_deterministic_and_source_faithful():
     envelope = ResultEnvelope(
-        query_plan=QueryPlan(operation="get_profile", wmo="1902202", cycle=161),
+        query_plan=QueryPlan(operation="get_profile", wmo="1902202", cycle=161, direction="A"),
         data=[],
         chart_spec=[],
         provenance=[
@@ -81,7 +81,7 @@ def test_export_is_deterministic_and_source_faithful():
 
 def test_export_sorts_masked_pressure_by_depth_without_coercing_none():
     envelope = ResultEnvelope(
-        query_plan=QueryPlan(operation="get_profile", wmo="1902202", cycle=161, parameters=["TEMP"]),
+        query_plan=QueryPlan(operation="get_profile", wmo="1902202", cycle=161, direction="A", parameters=["TEMP"]),
         data=[], chart_spec=[], provenance=[], qc_summary=QcSummary(retained=2, rejected=0), methods=[], assumptions=[], warnings=[],
     )
     rows = [
@@ -111,7 +111,7 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
             "qc_mode": "research",
         },
     ).json()
-    selection = {"wmo": "1900001", "cycle": 7, "source_profile_index": 0}
+    selection = {"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}
     response = client.post(
         "/v1/export",
         json={
@@ -150,7 +150,7 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
         "/v1/export",
         json={
             "plan": result["query_plan"],
-            "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 99}],
+            "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 99, "direction": "A"}],
         },
     )
     assert altered.status_code == 422
@@ -167,10 +167,11 @@ def test_export_endpoint_accepts_a_valid_get_profile_plan(snapshot_dir):
                 "operation": "get_profile",
                 "wmo": "1900001",
                 "cycle": 7,
+                "direction": "A",
                 "parameters": ["TEMP", "PSAL"],
                 "qc_mode": "research",
             },
-            "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}],
+            "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}],
         },
     )
 

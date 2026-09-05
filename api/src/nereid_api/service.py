@@ -46,6 +46,11 @@ def _mask_unrequested(rows: list[dict[str, Any]], parameters: Sequence[str], pol
     }
     allowed = {1} if policy is QcPolicy.RESEARCH else {1, 2}
     for row in rows:
+        # Raw observations are independently quarantined by their own Argo QC.
+        if "TEMP" in requested and row["temperature_qc"] not in allowed:
+            row["temperature_raw"] = None
+        if "PSAL" in requested and row["salinity_qc"] not in allowed:
+            row["salinity_raw"] = None
         if not {row["pressure_adjusted_qc"], row["salinity_adjusted_qc"]} <= allowed:
             row["absolute_salinity"] = None
         if not {row["pressure_adjusted_qc"], row["temperature_adjusted_qc"], row["salinity_adjusted_qc"]} <= allowed:
@@ -58,11 +63,11 @@ def _mask_unrequested(rows: list[dict[str, Any]], parameters: Sequence[str], pol
 
 
 def _profile_metrics(rows: list[dict[str, Any]], policy: QcPolicy, parameters: Sequence[str]) -> list[dict[str, JsonValue]]:
-    grouped: dict[tuple[str, int, int], list[dict[str, Any]]] = defaultdict(list)
+    grouped: dict[tuple[str, int, str, int], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        grouped[(row["wmo"], row["cycle"], row["source_profile_index"])].append(row)
+        grouped[(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"])].append(row)
     metrics: list[dict[str, JsonValue]] = []
-    for (wmo, cycle, index), levels in grouped.items():
+    for (wmo, cycle, direction, index), levels in grouped.items():
         first = levels[0]
         profile = ProfileSeries(wmo=wmo, cycle=cycle, depth_m=[row["depth_m"] for row in levels], latitude=first["latitude"], longitude=first["longitude"], timestamp=first["timestamp"], data_mode=DataMode(first["data_mode"]), conservative_temperature=DerivedObservationSeries(values=[row["conservative_temperature"] for row in levels], adjusted_qc=[row["temperature_adjusted_qc"] for row in levels], adjusted_errors=[row["temperature_adjusted_error"] for row in levels]), absolute_salinity=DerivedObservationSeries(values=[row["absolute_salinity"] for row in levels], adjusted_qc=[row["salinity_adjusted_qc"] for row in levels], adjusted_errors=[row["salinity_adjusted_error"] for row in levels]), pressure_adjusted_qc=[row["pressure_adjusted_qc"] for row in levels], pressure_adjusted_errors=[row["pressure_adjusted_error"] for row in levels])
         requested = set(parameters) or {"TEMP", "PSAL", "PRES"}
@@ -74,7 +79,7 @@ def _profile_metrics(rows: list[dict[str, Any]], policy: QcPolicy, parameters: S
         for metric_function in metric_functions:
             metric = metric_function(profile, policy)
             if metric:
-                metrics.append(cast(dict[str, JsonValue], {"wmo": wmo, "cycle": cycle, "source_profile_index": index, **metric.model_dump(mode="json")}))
+                metrics.append(cast(dict[str, JsonValue], {"wmo": wmo, "cycle": cycle, "direction": direction, "source_profile_index": index, **metric.model_dump(mode="json")}))
     return metrics
 
 
@@ -84,11 +89,18 @@ def _distance_km(left: dict[str, Any], right: dict[str, Any]) -> float:
     return 2 * 6371.0088 * asin(sqrt(haversine))
 
 
-def _interpolate(levels: list[dict[str, Any]], depth_m: float, field: str) -> float | None:
-    valid = [(row["depth_m"], row[field]) for row in levels if row[field] is not None]
-    if not valid or depth_m < valid[0][0] or depth_m > valid[-1][0]:
-        return None
-    return float(np.interp(depth_m, *zip(*valid, strict=True)))
+def _interpolate(levels: list[dict[str, Any]], depth_m: float, field: str, max_gap_m: float) -> tuple[float | None, str | None]:
+    """Return only exact or adjacent bounded interpolation; never bridge a gap."""
+    valid = sorted((float(row["depth_m"]), row[field]) for row in levels if row[field] is not None)
+    for native_depth, value in valid:
+        if native_depth == depth_m:
+            return float(value), None
+    for (lower_depth, lower), (upper_depth, upper) in pairwise(valid):
+        if lower_depth < depth_m < upper_depth:
+            if upper_depth - lower_depth > max_gap_m:
+                return None, "vertical_gap"
+            return float(lower + (upper - lower) * (depth_m - lower_depth) / (upper_depth - lower_depth)), None
+    return None, None
 
 
 class InvestigationService:
@@ -97,11 +109,11 @@ class InvestigationService:
 
     @staticmethod
     def _require_exact_representations(plan: QueryPlan, rows: list[dict[str, Any]]) -> None:
-        requested = {(item.wmo, item.cycle, item.source_profile_index) for item in plan.profile_ids}
-        returned = {(row["wmo"], row["cycle"], row["source_profile_index"]) for row in rows}
+        requested = {(item.wmo, item.cycle, item.direction, item.source_profile_index) for item in plan.profile_ids}
+        returned = {(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) for row in rows}
         missing = requested - returned
         if missing:
-            names = ", ".join(f"{wmo}/{cycle}/{index}" for wmo, cycle, index in sorted(missing))
+            names = ", ".join(f"{wmo}/{cycle}/{direction}/{index}" for wmo, cycle, direction, index in sorted(missing))
             raise ValueError(f"insufficient or missing requested representation: {names}")
 
     def _envelope(self, plan: QueryPlan, rows: list[dict[str, Any]], candidate_count: int, eligible_count: int) -> ResultEnvelope:
@@ -112,9 +124,9 @@ class InvestigationService:
         error_fields = {"PRES": "pressure_adjusted_error", "TEMP": "temperature_adjusted_error", "PSAL": "salinity_adjusted_error"}
         error_parameters: dict[str, dict[str, float | int | None]] = {}
         warnings: list[str] = []
-        grouped_rows: dict[tuple[str, int, int], list[dict[str, Any]]] = defaultdict(list)
+        grouped_rows: dict[tuple[str, int, str, int], list[dict[str, Any]]] = defaultdict(list)
         for row in rows:
-            grouped_rows[(row["wmo"], row["cycle"], row["source_profile_index"])].append(row)
+            grouped_rows[(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"])].append(row)
         for identity, levels in grouped_rows.items():
             for parameter in requested:
                 available = [float(row[error_fields[parameter]]) for row in levels if row[error_fields[parameter]] is not None and np.isfinite(float(row[error_fields[parameter]])) and float(row[error_fields[parameter]]) >= 0]
@@ -126,6 +138,8 @@ class InvestigationService:
             warnings.append("No matching profiles; widen one bounded filter.")
         elif plan.operation in {"find_profiles", "nearest_floats", "get_profile"} and eligible_count > len(rows):
             warnings.append("Results truncated to the requested row limit.")
+        if len({row["vertical_sampling_scheme"] for row in rows}) > 1:
+            warnings.append("Selected representations use multiple vertical sampling schemes.")
         if plan.operation == "nearest_floats":
             warnings = warnings + ["Nearest representations are ordered by squared geographic distance from the bounding-box center."]
         return ResultEnvelope(query_plan=plan, data=data, chart_spec=[{"profile_metrics": metrics}], provenance=_provenance(rows), qc_summary=QcSummary(retained=len(rows), rejected=max(candidate_count - eligible_count, 0)), methods=[MethodRecord(name="duckdb_parameterized_profile_query", version="1", parameters={"qc_policy": plan.qc_mode, "parameters": plan.parameters or ["TEMP", "PSAL", "PRES"], "row_limit": plan.row_limit, "nearest_order": "bbox_center_distance" if plan.operation == "nearest_floats" else "not_applicable", "adjusted_errors": error_parameters})], assumptions=[], warnings=warnings)
@@ -137,12 +151,14 @@ class InvestigationService:
             rows, candidate_count, eligible_count = self.store.find_profiles(plan), self.store.count_candidates(plan), self.store.count_qc_eligible(plan)
         elif plan.operation == "nearest_floats":
             rows, candidate_count, eligible_count = self.store.nearest_floats(plan), self.store.count_candidates(plan), self.store.count_qc_eligible(plan)
+            if len(rows) > plan.row_limit:
+                raise ValueError("nearest representations exceed row_limit")
         elif plan.operation == "get_profile":
-            rows = self.store.get_profile(plan.wmo or "", plan.cycle or 0, plan)
-            candidate_count = self.store.count_profile_candidates(plan.wmo or "", plan.cycle or 0)
-            eligible_count = self.store.count_profile_qc_eligible(plan.wmo or "", plan.cycle or 0, plan)
+            rows = self.store.get_profile(plan.wmo or "", plan.cycle or 0, plan.direction or "A", plan)
+            candidate_count = self.store.count_profile_candidates(plan.wmo or "", plan.cycle or 0, plan.direction or "A")
+            eligible_count = self.store.count_profile_qc_eligible(plan.wmo or "", plan.cycle or 0, plan.direction or "A", plan)
         else:  # compare_profiles has exact profile IDs.
-            identities = {(item.wmo, item.cycle, item.source_profile_index) for item in plan.profile_ids if item.source_profile_index is not None}
+            identities = {(item.wmo, item.cycle, item.direction, item.source_profile_index) for item in plan.profile_ids if item.source_profile_index is not None}
             candidate_count, eligible_count = self.store.count_selected_candidates(plan, identities), self.store.count_selected_qc_eligible(plan, identities)
             if eligible_count > plan.row_limit:
                 raise ValueError("exact selection exceeds row_limit")
@@ -154,13 +170,13 @@ class InvestigationService:
         if plan.operation == "derive_section":
             raise ValueError("export_selection supports level-row query plans only")
         envelope = self.run_plan(plan)
-        requested = {(item["wmo"], item["cycle"], item["source_profile_index"]) for item in selections}
+        requested = {(item["wmo"], item["cycle"], item["direction"], item["source_profile_index"]) for item in selections}
         if len(requested) != len(selections):
             raise ValueError("export selections must be unique")
-        available = {(row["wmo"], row["cycle"], row["source_profile_index"]) for row in envelope.data}
+        available = {(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) for row in envelope.data}
         if not requested <= available:
             raise ValueError("export selection is not present in the bounded QC-eligible result")
-        rows = [row for row in envelope.data if (row["wmo"], row["cycle"], row["source_profile_index"]) in requested]
+        rows = [row for row in envelope.data if (row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) in requested]
         candidate_count = self.store.count_selected_candidates(plan, requested)
         eligible_count = self.store.count_selected_qc_eligible(plan, requested)
         return envelope.model_copy(update={"data": rows, "provenance": _provenance(rows), "qc_summary": QcSummary(retained=len(rows), rejected=max(candidate_count - eligible_count, 0))})
@@ -174,7 +190,7 @@ class InvestigationService:
             qc_mode=request.qc_mode,
             row_limit=plan.row_limit,
         )
-        identities = {(item.wmo, item.cycle, item.source_profile_index) for item in request.profile_ids if item.source_profile_index is not None}
+        identities = {(item.wmo, item.cycle, item.direction, item.source_profile_index) for item in request.profile_ids if item.source_profile_index is not None}
         candidate_count = self.store.count_selected_candidates(scientific_plan, identities)
         eligible_count = self.store.count_selected_qc_eligible(scientific_plan, identities)
         if eligible_count > plan.row_limit:
@@ -182,11 +198,11 @@ class InvestigationService:
         rows = self.store.compare_profiles(request.profile_ids, scientific_plan)
         self._require_exact_representations(scientific_plan, rows)
         envelope = self._envelope(plan, rows, candidate_count, eligible_count)
-        grouped: dict[tuple[str, int, int], list[dict[str, Any]]] = defaultdict(list)
+        grouped: dict[tuple[str, int, str, int], list[dict[str, Any]]] = defaultdict(list)
         for row in rows:
-            grouped[(row["wmo"], row["cycle"], row["source_profile_index"])].append(row)
-        profiles = [grouped[(item.wmo, item.cycle, item.source_profile_index)] for item in request.profile_ids if item.source_profile_index is not None and (item.wmo, item.cycle, item.source_profile_index) in grouped]
-        coordinates = [{key: _json_value(levels[0][key]) for key in ("wmo", "cycle", "source_profile_index", "vertical_sampling_scheme", "latitude", "longitude", "timestamp")} for levels in profiles]
+            grouped[(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"])].append(row)
+        profiles = [grouped[(item.wmo, item.cycle, item.direction, item.source_profile_index)] for item in request.profile_ids if item.source_profile_index is not None and (item.wmo, item.cycle, item.direction, item.source_profile_index) in grouped]
+        coordinates = [{key: _json_value(levels[0][key]) for key in ("wmo", "cycle", "direction", "source_profile_index", "vertical_sampling_scheme", "latitude", "longitude", "timestamp")} for levels in profiles]
         cells: list[dict[str, Any]] = []
         gaps: list[dict[str, Any]] = []
         for index, (left, right) in enumerate(pairwise(profiles)):
@@ -194,8 +210,12 @@ class InvestigationService:
             if reason:
                 gaps.append({"left_profile_index": index, "right_profile_index": index + 1, "reason": reason})
             for depth in np.arange(0, min(max(row["depth_m"] for row in left), max(row["depth_m"] for row in right)) + request.depth_step_m, request.depth_step_m):
-                temperature, salinity = _interpolate(left, depth, "conservative_temperature"), _interpolate(right, depth, "conservative_temperature")
-                left_salinity, right_salinity = _interpolate(left, depth, "absolute_salinity"), _interpolate(right, depth, "absolute_salinity")
-                cells.append({"left_profile_index": index, "right_profile_index": index + 1, "depth_m": float(depth), "temperature": None if reason or temperature is None or salinity is None else (temperature + salinity) / 2, "salinity": None if reason or left_salinity is None or right_salinity is None else (left_salinity + right_salinity) / 2})
+                temperature, temperature_reason = _interpolate(left, depth, "conservative_temperature", request.max_vertical_gap_m)
+                right_temperature, right_temperature_reason = _interpolate(right, depth, "conservative_temperature", request.max_vertical_gap_m)
+                left_salinity, left_salinity_reason = _interpolate(left, depth, "absolute_salinity", request.max_vertical_gap_m)
+                right_salinity, right_salinity_reason = _interpolate(right, depth, "absolute_salinity", request.max_vertical_gap_m)
+                vertical_reason = temperature_reason or right_temperature_reason or left_salinity_reason or right_salinity_reason
+                cell_reason = reason or vertical_reason
+                cells.append({"left_profile_index": index, "right_profile_index": index + 1, "depth_m": float(depth), "temperature": None if cell_reason or temperature is None or right_temperature is None else (temperature + right_temperature) / 2, "salinity": None if cell_reason or left_salinity is None or right_salinity is None else (left_salinity + right_salinity) / 2, "mask_reason": cell_reason})
         section = cast(dict[str, JsonValue], {"observation_coordinates": coordinates, "section_cells": cells, "masked_gaps": gaps})
-        return envelope.model_copy(update={"data": [section], "chart_spec": [{"section": section}], "section_request": request, "methods": [MethodRecord(name="gap_masked_linear_section", version="1", parameters={"depth_step_m": request.depth_step_m, "max_time_gap_hours": request.max_time_gap_hours, "max_distance_km": request.max_distance_km})], "assumptions": ["Sections only connect the explicitly requested source representations."]})
+        return envelope.model_copy(update={"data": [section], "chart_spec": [{"section": section}], "section_request": request, "methods": [MethodRecord(name="gap_masked_linear_section", version="1", parameters={"depth_step_m": request.depth_step_m, "max_time_gap_hours": request.max_time_gap_hours, "max_distance_km": request.max_distance_km, "max_vertical_gap_m": request.max_vertical_gap_m})], "assumptions": ["Sections only connect the explicitly requested source representations."]})

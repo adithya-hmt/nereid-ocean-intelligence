@@ -23,6 +23,7 @@ class ProfileIdentifier(BaseModel):
     model_config = ConfigDict(extra="forbid")
     wmo: str = Field(min_length=1)
     cycle: int = Field(ge=0)
+    direction: Literal["A", "D"]
     source_profile_index: int | None = Field(default=None, ge=0)
 
 
@@ -35,10 +36,11 @@ class SectionRequest(BaseModel):
     depth_step_m: float = Field(default=10, gt=0, le=100)
     max_time_gap_hours: float = Field(default=168, gt=0, le=24 * 31)
     max_distance_km: float = Field(default=500, gt=0, le=2_000)
+    max_vertical_gap_m: float = Field(default=100, gt=0, le=500)
 
     @model_validator(mode="after")
     def require_unique_representations(self) -> "SectionRequest":
-        identities = [(item.wmo, item.cycle, item.source_profile_index) for item in self.profile_ids]
+        identities = [(item.wmo, item.cycle, item.direction, item.source_profile_index) for item in self.profile_ids]
         if len(identities) != len(set(identities)):
             raise ValueError("profile_ids must be unique")
         if any(item.source_profile_index is None for item in self.profile_ids):
@@ -58,15 +60,17 @@ class QueryPlan(BaseModel):
     qc_mode: QcPolicy = QcPolicy.RESEARCH
     wmo: str | None = None
     cycle: int | None = Field(default=None, ge=0)
+    direction: Literal["A", "D"] | None = None
     profile_ids: list[ProfileIdentifier] = Field(default_factory=list, max_length=100)
     row_limit: Annotated[int, Field(ge=1, le=100_000)] = 10_000
+    float_count: Annotated[int | None, Field(ge=1, le=100)] = None
 
     @model_validator(mode="after")
     def validate_operation_selector(self) -> "QueryPlan":
         geographic = self.bbox is not None or self.start_date is not None or self.end_date is not None
         complete_geographic = self.bbox is not None and self.start_date is not None and self.end_date is not None
-        single_profile = self.wmo is not None or self.cycle is not None
-        complete_single_profile = self.wmo is not None and self.cycle is not None
+        single_profile = self.wmo is not None or self.cycle is not None or self.direction is not None
+        complete_single_profile = self.wmo is not None and self.cycle is not None and self.direction is not None
         if self.start_date is not None and self.end_date is not None and self.start_date > self.end_date:
             raise ValueError("start_date must not be after end_date")
         if self.bbox:
@@ -76,14 +80,14 @@ class QueryPlan(BaseModel):
             if west >= east or south >= north:
                 raise ValueError("bbox must have west < east and south < north")
         if self.operation in {"find_profiles", "nearest_floats"}:
-            if not complete_geographic or single_profile or self.profile_ids:
+            if not complete_geographic or single_profile or self.profile_ids or (self.operation == "nearest_floats" and self.float_count is None) or (self.operation == "find_profiles" and self.float_count is not None):
                 raise ValueError(f"{self.operation} requires bbox, start_date, and end_date only")
         elif self.operation == "get_profile":
-            if not complete_single_profile or geographic or self.profile_ids:
-                raise ValueError("get_profile requires exactly wmo and cycle")
+            if not complete_single_profile or geographic or self.profile_ids or self.float_count is not None:
+                raise ValueError("get_profile requires exactly wmo, cycle, and direction")
         else:
-            identities = [(item.wmo, item.cycle, item.source_profile_index) for item in self.profile_ids]
-            if geographic or single_profile or not (2 <= len(self.profile_ids) <= 100):
+            identities = [(item.wmo, item.cycle, item.direction, item.source_profile_index) for item in self.profile_ids]
+            if geographic or single_profile or self.float_count is not None or not (2 <= len(self.profile_ids) <= 100):
                 raise ValueError(f"{self.operation} requires 2–100 profile_ids only")
             if len(identities) != len(set(identities)):
                 raise ValueError("profile_ids must be unique")

@@ -8,14 +8,14 @@ import type { ResultEnvelope } from '../lib/types'
 
 vi.mock('../lib/api', () => ({ ApiError: class ApiError extends Error {}, executeQuery: vi.fn(), interpretQuestion: vi.fn(), deriveSection: vi.fn(), exportEvidence: vi.fn() }))
 
-const row = (wmo: string, cycle: number, source_profile_index: number) => ({ wmo, cycle, source_profile_index, vertical_sampling_scheme: 'primary', depth_m: 10, latitude: 10, longitude: 70, timestamp: '2023-03-15T00:00:00Z', temperature_raw: 28, salinity_raw: 34, conservative_temperature: 27.9, absolute_salinity: 34.01 })
+const row = (wmo: string, cycle: number, source_profile_index: number) => ({ wmo, cycle, direction: 'A' as const, source_profile_index, vertical_sampling_scheme: 'primary', depth_m: 10, latitude: 10, longitude: 70, timestamp: '2023-03-15T00:00:00Z', temperature_raw: 28, salinity_raw: 34, conservative_temperature: 27.9, absolute_salinity: 34.01 })
 const response: ResultEnvelope = {
   query_plan: { operation: 'find_profiles' as const, bbox: [60, 0, 80, 20] as [number, number, number, number], start_date: '2023-03-01', end_date: '2023-03-31', parameters: ['TEMP', 'PSAL'] as ('TEMP' | 'PSAL')[], qc_mode: 'research' as const, row_limit: 10000 },
   data: [row('1900001', 7, 0), row('1900002', 8, 0), row('1900003', 9, 0)],
-  chart_spec: [{ profile_metrics: [{ wmo: '1900001', cycle: 7, source_profile_index: 0, name: 'principal_thermocline', value: -0.2, depth_m: 50, units: 'degC m-1', uncertainty_m: 10, algorithm: 'three_level', parameters: { adjusted_error_max: 0.1 }, quality_label: 'research QC 1' }] }],
+  chart_spec: [{ profile_metrics: [{ wmo: '1900001', cycle: 7, direction: 'A', source_profile_index: 0, name: 'principal_thermocline', value: -0.2, depth_m: 50, units: 'degC m-1', uncertainty_m: 10, algorithm: 'three_level', parameters: { adjusted_error_max: 0.1 }, quality_label: 'research QC 1' }] }],
   provenance: [{ source_url: 'https://example.test/a.nc', snapshot_doi: '10.1234/nereid', fetched_at: '2023-03-26T00:00:00Z', sha256: 'a'.repeat(64) }], qc_summary: { retained: 3, rejected: 2 }, methods: [{ name: 'duckdb_parameterized_profile_query', version: '1', parameters: {} }], assumptions: [], warnings: [], answer: null,
 }
-const coordinate = (wmo: string, cycle: number, source_profile_index: number, vertical_sampling_scheme: string, latitude: number, longitude: number, timestamp: string) => ({ wmo, cycle, source_profile_index, vertical_sampling_scheme, latitude, longitude, timestamp })
+const coordinate = (wmo: string, cycle: number, source_profile_index: number, vertical_sampling_scheme: string, latitude: number, longitude: number, timestamp: string) => ({ wmo, cycle, direction: 'A' as const, source_profile_index, vertical_sampling_scheme, latitude, longitude, timestamp })
 const section: ResultEnvelope = { ...response, data: [{ observation_coordinates: [coordinate('1900001', 7, 0, 'primary', 10, 70, '2023-03-15T00:00:00Z'), coordinate('1900002', 8, 0, 'primary', 11, 71, '2023-03-16T00:00:00Z')], section_cells: [{ left_profile_index: 0, right_profile_index: 1, depth_m: 10, temperature: null, salinity: null }], masked_gaps: [{ left_profile_index: 0, right_profile_index: 1, reason: 'time_gap' }] }], chart_spec: [] }
 const mockedExecuteQuery = vi.mocked(executeQuery)
 const mockedInterpretQuestion = vi.mocked(interpretQuestion)
@@ -26,7 +26,7 @@ test('links exactly two default representations across plots and metric refusals
   mockedExecuteQuery.mockResolvedValue(response)
   render(<InvestigationWorkspace />)
   fireEvent.click(screen.getByRole('button', { name: 'Run investigation' }))
-  await screen.findByRole('img', { name: /1900001 cycle 7 representation 0: Conservative Temperature/ })
+  await screen.findByRole('img', { name: /1900001 cycle 7 direction A representation 0: Conservative Temperature/ })
   expect(screen.getAllByRole('img', { name: /Conservative Temperature/ })).toHaveLength(2)
   expect(screen.queryByRole('img', { name: /1900003 cycle 9/ })).toBeNull()
   expect(screen.getByText(/-0.2 degC m-1 at 50 m/)).toBeDefined()
@@ -40,9 +40,9 @@ test('resets selection only after a successful replacement result', async () => 
   mockedExecuteQuery.mockResolvedValueOnce(response).mockResolvedValueOnce({ ...response, data: [row('1900010', 10, 0), row('1900011', 11, 0)] })
   render(<InvestigationWorkspace />)
   fireEvent.click(screen.getByRole('button', { name: 'Run investigation' }))
-  await screen.findByLabelText(/1900001 \/ cycle 7 \/ representation 0/)
+  await screen.findByLabelText(/1900001 \/ cycle 7 \/ A \/ representation 0/)
   fireEvent.click(screen.getByRole('button', { name: 'Run investigation' }))
-  await screen.findByLabelText(/1900010 \/ cycle 10 \/ representation 0/)
+  await screen.findByLabelText(/1900010 \/ cycle 10 \/ A \/ representation 0/)
   expect(screen.queryByLabelText(/1900001 \/ cycle 7/)).toBeNull()
 })
 
@@ -51,7 +51,7 @@ test('derives a section with the same exact selected IDs and retains prior data 
   render(<InvestigationWorkspace initialResult={response} />)
   fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
   await screen.findByRole('table', { name: 'Cross-section observations' })
-  expect(mockedDeriveSection).toHaveBeenCalledWith(expect.objectContaining({ profile_ids: [{ wmo: '1900001', cycle: 7, source_profile_index: 0 }, { wmo: '1900002', cycle: 8, source_profile_index: 0 }] }), expect.anything())
+  expect(mockedDeriveSection).toHaveBeenCalledWith(expect.objectContaining({ profile_ids: [{ wmo: '1900001', cycle: 7, direction: 'A', source_profile_index: 0 }, { wmo: '1900002', cycle: 8, direction: 'A', source_profile_index: 0 }] }), expect.anything())
   fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
   await screen.findByRole('alert')
   expect(screen.getByRole('table', { name: 'Cross-section observations' })).toBeDefined()
@@ -64,7 +64,7 @@ test('selection changes abort and invalidate an in-flight section', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
   await waitFor(() => expect(mockedDeriveSection).toHaveBeenCalledTimes(1))
   const signal = mockedDeriveSection.mock.calls[0][1]!
-  fireEvent.click(screen.getByLabelText(/1900003 \/ cycle 9 \/ representation 0/))
+  fireEvent.click(screen.getByLabelText(/1900003 \/ cycle 9 \/ A \/ representation 0/))
   expect(signal.aborted).toBe(true)
   resolveSection(section)
   await waitFor(() => expect(screen.queryByRole('table', { name: 'Cross-section observations' })).toBeNull())
@@ -83,7 +83,7 @@ test('a replacement query invalidates an older section response', async () => {
   expect(signal.aborted).toBe(true)
   resolveSection(section)
   resolveQuery({ ...response, data: [row('1900010', 10, 0), row('1900011', 11, 0)] })
-  await screen.findByLabelText(/1900010 \/ cycle 10 \/ representation 0/)
+  await screen.findByLabelText(/1900010 \/ cycle 10 \/ A \/ representation 0/)
   expect(screen.queryByRole('table', { name: 'Cross-section observations' })).toBeNull()
 })
 
@@ -108,8 +108,8 @@ test('uses each gap reason and exact representations in the section alternatives
     }],
   }
   render(<CrossSectionPlot result={multiGapSection} />)
-  expect(screen.getByText(/Observed coordinate: 1900001 \/ cycle 7 \/ representation 0 \/ primary/)).toBeDefined()
-  expect(screen.getByText(/Observed coordinate: 1900001 \/ cycle 7 \/ representation 1 \/ secondary/)).toBeDefined()
+  expect(screen.getByText(/Observed coordinate: 1900001 \/ cycle 7 \/ A \/ representation 0 \/ primary/)).toBeDefined()
+  expect(screen.getByText(/Observed coordinate: 1900001 \/ cycle 7 \/ A \/ representation 1 \/ secondary/)).toBeDefined()
   expect(screen.getByRole('table', { name: 'Cross-section observations' }).textContent).toContain('time gap')
   expect(screen.getByRole('table', { name: 'Cross-section observations' }).textContent).toContain('distance gap')
   expect(screen.getByRole('table', { name: 'Cross-section observations' }).textContent).toContain('interpolated derived')
@@ -129,6 +129,6 @@ test('does not let a superseded request replace the newer result', async () => {
   mockedExecuteQuery.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve })).mockImplementationOnce(() => new Promise((resolve) => { resolveNew = resolve }))
   const { container } = render(<InvestigationWorkspace />)
   fireEvent.submit(container.querySelector('form')!); fireEvent.submit(container.querySelector('form')!)
-  resolveNew({ ...response, data: [row('1900002', 8, 0)] }); await screen.findAllByText(/1900002 \/ cycle 8 \/ representation 0/)
-  resolveOld(response); await waitFor(() => expect(screen.queryByText(/1900001 \/ cycle 7 \/ representation 0/)).toBeNull())
+  resolveNew({ ...response, data: [row('1900002', 8, 0)] }); await screen.findAllByText(/1900002 \/ cycle 8 \/ A \/ representation 0/)
+  resolveOld(response); await waitFor(() => expect(screen.queryByText(/1900001 \/ cycle 7 \/ A \/ representation 0/)).toBeNull())
 })

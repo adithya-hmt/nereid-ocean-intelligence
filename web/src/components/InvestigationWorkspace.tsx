@@ -16,11 +16,18 @@ import { TrajectoryGlobe } from './TrajectoryGlobe'
 const winningPlan: QueryPlan = { operation: 'find_profiles', bbox: [60, 0, 80, 20], start_date: '2023-03-01', end_date: '2023-03-31', parameters: ['TEMP', 'PSAL'], qc_mode: 'research', row_limit: 10000 }
 type ExactProfileIdentifier = ProfileIdentifier & { source_profile_index: number }
 type Props = { initialResult?: ResultEnvelope; benchmark?: boolean; emptyBenchmark?: boolean }
-const identity = (item: ProfileIdentifier) => `${item.wmo}/${item.cycle}/${item.source_profile_index}`
+const identity = (item: ProfileIdentifier) => `${item.wmo}/${item.cycle}/${item.direction}/${item.source_profile_index}`
 
 function availableRepresentations(result: ResultEnvelope | undefined): ExactProfileIdentifier[] {
   if (!result) return []
-  return Array.from(new Map(result.data.flatMap((row) => typeof row.wmo === 'string' && typeof row.cycle === 'number' && typeof row.source_profile_index === 'number' ? [[`${row.wmo}/${row.cycle}/${row.source_profile_index}`, { wmo: row.wmo, cycle: row.cycle, source_profile_index: row.source_profile_index }]] : [])).values()).sort((left, right) => identity(left).localeCompare(identity(right)))
+  const representations = new Map<string, ExactProfileIdentifier>()
+  for (const row of result.data) {
+    const direction = row.direction
+    if (typeof row.wmo !== 'string' || typeof row.cycle !== 'number' || typeof row.source_profile_index !== 'number' || (direction !== 'A' && direction !== 'D')) continue
+    const representation: ExactProfileIdentifier = { wmo: row.wmo, cycle: row.cycle, direction, source_profile_index: row.source_profile_index }
+    representations.set(identity(representation), representation)
+  }
+  return Array.from(representations.values()).sort((left, right) => identity(left).localeCompare(identity(right)))
 }
 
 export function InvestigationWorkspace({ initialResult, benchmark = false, emptyBenchmark = false }: Props) {
@@ -74,7 +81,7 @@ export function InvestigationWorkspace({ initialResult, benchmark = false, empty
     sectionRequest.current?.abort()
     const controller = new AbortController(); sectionRequest.current = controller
     setSectionLoading(true); setSectionError(undefined)
-    const request: SectionRequest = { profile_ids: selections, qc_mode: result.query_plan.qc_mode, depth_step_m: 10, max_time_gap_hours: 168, max_distance_km: 500 }
+    const request: SectionRequest = { profile_ids: selections, qc_mode: result.query_plan.qc_mode, depth_step_m: 10, max_time_gap_hours: 168, max_distance_km: 500, max_vertical_gap_m: 100 }
     try {
       const nextSection = await deriveSection(request, controller.signal)
       if (sectionRequest.current === controller) setSection(nextSection)
