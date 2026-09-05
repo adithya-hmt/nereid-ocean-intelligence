@@ -7,6 +7,7 @@ import os
 from typing import Any
 
 from openai import APITimeoutError, AsyncAzureOpenAI
+from pydantic import ValidationError
 
 from nereid_api.models import QueryPlan
 
@@ -39,10 +40,12 @@ class AzurePlanner:
                         "role": "system",
                         "content": (
                             "Translate the user's question into exactly one QueryPlan. "
-                            "Use only the allowed QueryPlan operations, parameters, QC modes, "
-                            "and row limits. Every geographic query must include a bounded bbox "
-                            "and start and end dates; profile queries must include WMO and cycle. "
-                            "Do not produce SQL, analytics, measurements, conclusions, or scientific claims."
+                            "Allowed operations: find_profiles, nearest_floats, get_profile, "
+                            "compare_profiles, derive_section, export_selection. Allowed parameters: "
+                            "TEMP, PSAL, PRES. Allowed QC modes: research, exploratory. Use only these "
+                            "values and the QueryPlan row limits. Every geographic query must include a "
+                            "bounded bbox and start and end dates; profile queries must include WMO and "
+                            "cycle. Do not produce SQL, analytics, measurements, conclusions, or scientific claims."
                         ),
                     },
                     {"role": "user", "content": question},
@@ -57,7 +60,12 @@ class AzurePlanner:
         parsed = message.parsed if message else None
         if message is None or message.refusal or parsed is None:
             raise PlannerUnavailable("AI interpretation is unavailable; use explicit filters.")
-        return QueryPlan.model_validate(parsed)
+        try:
+            return QueryPlan.model_validate(parsed)
+        except ValidationError as error:
+            raise PlannerUnavailable(
+                "AI interpretation unavailable—filters still work. Use explicit filters."
+            ) from error
 
 
 def azure_planner_from_environment() -> AzurePlanner | None:

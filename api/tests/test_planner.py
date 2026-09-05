@@ -2,7 +2,6 @@
 import asyncio
 
 import pytest
-from pydantic import ValidationError
 
 from nereid_api.models import QueryPlan
 from nereid_api.planner import (
@@ -59,7 +58,7 @@ def test_explicit_planner_passes_through_validated_filters():
 def test_azure_planner_rejects_unbounded_model_response():
     client = FakeClient(FakeCompletions(FakeResponse(FakeMessage(parsed={"operation": "find_profiles"}))))
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(PlannerUnavailable, match="filters still work"):
         asyncio.run(AzurePlanner(client, "deployment").plan("find profiles"))
 
 
@@ -87,6 +86,9 @@ def test_azure_planner_uses_typed_parsing_with_only_query_plan_output():
     assert call["response_format"] is QueryPlan
     assert isinstance(call["messages"], list)
     assert len(call["messages"]) == 2
+    assert "find_profiles, nearest_floats, get_profile, compare_profiles, derive_section, export_selection" in call["messages"][0]["content"]
+    assert "TEMP, PSAL, PRES" in call["messages"][0]["content"]
+    assert "research, exploratory" in call["messages"][0]["content"]
 
 
 def test_azure_planner_is_absent_without_all_required_configuration(monkeypatch):

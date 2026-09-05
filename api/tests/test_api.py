@@ -1,6 +1,18 @@
 # pyright: reportMissingImports=false
 from fastapi.testclient import TestClient
 from nereid_api.main import create_app
+from nereid_api.planner import AzurePlanner
+
+
+class FakeCompletions:
+    async def parse(self, **kwargs: object) -> object:
+        message = type("Message", (), {"parsed": {"operation": "find_profiles"}, "refusal": None})()
+        return type("Response", (), {"choices": [type("Choice", (), {"message": message})()]})()
+
+
+class FakeClient:
+    def __init__(self) -> None:
+        self.chat = type("Chat", (), {"completions": FakeCompletions()})()
 
 
 def test_execute_returns_scientific_receipt(snapshot_dir):
@@ -121,6 +133,19 @@ def test_text_planning_falls_back_to_explicit_filters_without_azure(monkeypatch,
     client = TestClient(create_app(snapshot_dir))
 
     response = client.post("/v1/query/plan", json={"question": "Find profiles near 10N in March"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "plan": None,
+        "planner": "explicit",
+        "warnings": ["AI interpretation unavailable—filters still work. Use explicit filters."],
+    }
+
+
+def test_text_planning_invalid_model_plan_falls_back_to_explicit_filters(snapshot_dir):
+    client = TestClient(create_app(snapshot_dir, text_planner=AzurePlanner(FakeClient(), "deployment")))
+
+    response = client.post("/v1/query/plan", json={"question": "Find profiles"})
 
     assert response.status_code == 200
     assert response.json() == {
