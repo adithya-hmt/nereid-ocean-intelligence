@@ -234,3 +234,42 @@ Type and render observation coordinates with `source_profile_index` and `vertica
 - [ ] **Step 3: Verify and commit**
 
 Run focused web tests, full web tests/lint/build/offline Playwright, GPU benchmark last, reconcile evidence, commit `fix: render exact scientific evidence`, then repeat the full independent Standards/Spec review.
+
+---
+
+### Task R6: Close final identity, raw-QC, section-gap, and nearest-count contracts
+
+**Files:**
+- Modify: `pipeline/src/nereid_pipeline/normalize.py`
+- Modify: `api/src/nereid_api/models.py`
+- Modify: `api/src/nereid_api/store.py`
+- Modify: `api/src/nereid_api/service.py`
+- Modify: `api/src/nereid_api/main.py`
+- Modify: corresponding pipeline/API tests
+- Modify: `web/src/lib/types.ts`, `web/src/lib/api.ts`
+- Modify: `web/src/components/InvestigationWorkspace.tsx`, `ProfilePlot.tsx`, `ProfileMetrics.tsx`, `CrossSectionPlot.tsx`, `ScientificReceipt.tsx`
+- Modify: web unit/E2E tests and evidence docs
+
+- [ ] **Step 1: Quarantine raw QC 3/4**
+
+Requested raw TEMP/PSAL values whose own raw QC is not allowed by the selected research/exploratory policy must serialize as null and never enter plots or exports. Adjusted scientific fields continue using adjusted QC. Add mismatched raw-QC=4/adjusted-QC=1 tests through API, export, and UI.
+
+- [ ] **Step 2: Make direction part of exact identity**
+
+Add ascending/descending direction to `ProfileIdentifier` and carry it through every store selector/join grouping, section/export selection, receipt, client type, UI key/label, corpus expectation and E2E assertion. Keep `source_profile_index` source-local. Add collision tests for one WMO/cycle/index with A and D records.
+
+- [ ] **Step 3: Bound vertical section interpolation**
+
+Add `max_vertical_gap_m` to `SectionRequest` with a finite positive bound and documented default. Interpolation may use exact points or adjacent valid bracketing levels only when their depth separation is within the bound; otherwise return null and record a vertical-gap reason for that cell/pair. Never bridge a rejected native gap.
+
+- [ ] **Step 4: Give nearest floats a separate count contract**
+
+Add bounded `float_count` for `nearest_floats`. Select that many complete nearest representations by bbox-center distance, then return all their eligible levels only if the aggregate respects `row_limit`; otherwise reject 422 rather than truncate a representation. Add exact count/completeness and overflow tests.
+
+- [ ] **Step 5: Render single-parameter profiles independently**
+
+Profile panels must retain rows when only TEMP or only PSAL is requested and render each available series independently, with no insufficient-evidence message for an unrequested companion metric.
+
+- [ ] **Step 6: Correct evidence and warnings**
+
+Use `run_plan` in the documented latency command and either restore the truthful multiple-sampling-scheme API warning or remove the claim. Run scoped pipeline/API/web suites, offline Playwright, GPU benchmark last, evaluator expected blocked, reconcile exact evidence, and commit `fix: enforce final scientific identity contracts`.
