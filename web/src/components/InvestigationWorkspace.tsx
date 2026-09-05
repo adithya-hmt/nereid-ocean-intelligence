@@ -28,9 +28,10 @@ export function InvestigationWorkspace({ initialResult }: Props) {
     setLoading(true)
     setError(undefined)
     try {
-      setResult(await executeQuery(plan, controller.signal))
+      const nextResult = await executeQuery(plan, controller.signal)
+      if (request.current === controller) setResult(nextResult)
     } catch (caught) {
-      if (!(caught instanceof DOMException && caught.name === 'AbortError')) setError(caught instanceof ApiError ? `${caught.status}: ${caught.message}` : 'The investigation could not be updated. Check the snapshot and try again.')
+      if (request.current === controller && !(caught instanceof DOMException && caught.name === 'AbortError')) setError(caught instanceof ApiError ? `${caught.status}: ${caught.message}` : 'The investigation could not be updated. Check the snapshot and try again.')
     } finally {
       if (request.current === controller) setLoading(false)
     }
