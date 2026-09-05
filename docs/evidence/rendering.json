@@ -1,0 +1,6 @@
+{
+  "label": "benchmark only — synthetic rows are never scientific results",
+  "points": 100000,
+  "status": "blocked",
+  "blocker": "The Playwright run on this environment never reached the benchmark render-ready or fallback marker within 30 seconds. No FPS or initialization values were recorded."
+}
