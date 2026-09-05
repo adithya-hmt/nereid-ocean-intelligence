@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { ApiError, executeQuery } from '../lib/api'
 import { createBenchmarkRows } from '../lib/benchmark-data'
 import { isTrajectoryRow } from '../lib/geometry'
@@ -14,14 +14,9 @@ import { TrajectoryGlobe } from './TrajectoryGlobe'
 
 const winningPlan: QueryPlan = { operation: 'find_profiles', bbox: [60, 0, 80, 20], start_date: '2023-03-01', end_date: '2023-03-31', parameters: ['TEMP', 'PSAL'], qc_mode: 'research', row_limit: 10000 }
 
-type Props = { initialResult?: ResultEnvelope }
+type Props = { initialResult?: ResultEnvelope; benchmark?: boolean }
 
-const subscribeToLocation = () => () => undefined
-const serverBenchmark = () => false
-const browserBenchmark = () => new URLSearchParams(window.location.search).get('benchmark') === '100000'
-
-export function InvestigationWorkspace({ initialResult }: Props) {
-  const benchmark = useSyncExternalStore(subscribeToLocation, browserBenchmark, serverBenchmark)
+export function InvestigationWorkspace({ initialResult, benchmark = false }: Props) {
   const benchmarkRows = useMemo(() => benchmark ? createBenchmarkRows(100_000) : [], [benchmark])
   const [plan, setPlan] = useState<QueryPlan>(winningPlan)
   const [result, setResult] = useState<ResultEnvelope | undefined>(initialResult)

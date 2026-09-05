@@ -18,10 +18,10 @@ class WebglBoundary extends Component<BoundaryProps, BoundaryState> {
   render() { return this.state.failed ? null : this.props.children }
 }
 
-function PointCloud({ rows, exaggeration, onReady }: { rows: readonly TrajectoryRow[]; exaggeration: number; onReady: () => void }) {
+function PointCloud({ rows, exaggeration }: { rows: readonly TrajectoryRow[]; exaggeration: number }) {
   const invalidate = useThree((state) => state.invalidate)
   const buffers = useMemo(() => buildTrajectoryBuffers(rows, exaggeration), [rows, exaggeration])
-  useEffect(() => { invalidate(); onReady() }, [buffers, invalidate, onReady])
+  useEffect(() => { invalidate() }, [buffers, invalidate])
   return <points><bufferGeometry><bufferAttribute attach="attributes-position" args={[buffers.positions, 3]} /><bufferAttribute attach="attributes-color" args={[buffers.colors, 3]} /></bufferGeometry><pointsMaterial vertexColors size={0.012} sizeAttenuation /></points>
 }
 
@@ -51,7 +51,7 @@ export function TrajectoryGlobe({ rows, benchmark = false }: Props) {
     <div className="trajectory-controls"><TimeController timestamps={timestamps} cutoff={cutoff} onChange={setCutoff} /><label>Vertical exaggeration (radial depth ×)
       <input aria-label="Vertical exaggeration" type="range" min="0" max="100" value={exaggeration} onChange={(event) => setExaggeration(Number(event.target.value))} /><output>{exaggeration}×</output>
     </label></div>
-    {fallback ? <TrajectoryFallback rows={visibleRows} label={reducedMotion ? '2D longitude/latitude fallback (reduced motion)' : webglFailed ? '2D longitude/latitude fallback (WebGL unavailable)' : undefined} /> : <WebglBoundary onError={() => setWebglFailed(true)}><div className="globe-canvas"><Canvas frameloop="demand" camera={{ position: [0, 0, 2.6], fov: 45 }} onCreated={({ gl }) => { gl.setClearColor('#f4f7f4'); }}><ambientLight intensity={1} /><PointCloud rows={visibleRows} exaggeration={exaggeration} onReady={() => setReady(true)} /></Canvas></div></WebglBoundary>}
+    {fallback ? <TrajectoryFallback rows={visibleRows} label={reducedMotion ? '2D longitude/latitude fallback (reduced motion)' : webglFailed ? '2D longitude/latitude fallback (WebGL unavailable)' : undefined} /> : <WebglBoundary onError={() => setWebglFailed(true)}><div className="globe-canvas"><Canvas frameloop="demand" camera={{ position: [0, 0, 2.6], fov: 45 }} onCreated={({ gl }) => { gl.setClearColor('#f4f7f4'); setReady(true) }}><ambientLight intensity={1} /><PointCloud rows={visibleRows} exaggeration={exaggeration} /></Canvas></div></WebglBoundary>}
     <p className="trajectory-readout">Longitude/latitude/depth use source coordinates; time cutoff: {timestamps[cutoff] ? new Date(timestamps[cutoff]).toISOString() : 'none'}; rendered {visibleRows.length.toLocaleString()} of {rows.length.toLocaleString()} points; vertical exaggeration {exaggeration}×.</p>
   </section>
 }

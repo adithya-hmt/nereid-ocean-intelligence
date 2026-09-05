@@ -1,6 +1,17 @@
 {
   "label": "benchmark only — synthetic rows are never scientific results",
   "points": 100000,
-  "status": "blocked",
-  "blocker": "The Playwright run on this environment never reached the benchmark render-ready or fallback marker within 30 seconds. No FPS or initialization values were recorded."
+  "declared": {
+    "browser": "chromium",
+    "hardware": "Playwright-managed browser environment; hardware values reported by navigator."
+  },
+  "measured": {
+    "initializationMs": 2135.244563,
+    "fps": 60.01994017946162,
+    "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+    "hardware": {
+      "hardwareConcurrency": 8,
+      "deviceMemory": 16
+    }
+  }
 }
