@@ -48,3 +48,9 @@ Full exact gate rerun: pipeline 37 passed, API 37 passed, web 18 passed, lint/bu
 Selected exports now report QC exclusions from parameterized pre-pagination candidate and eligible counts scoped to the selected representations and bounded plan; retained remains the exact server-owned exported row count. The endpoint fixture verifies `retained=3` and `rejected=3` with QC 3/4 absent. Receipt selections reset only when the stable representation identity set changes, covered by a rerender/download test. The winning-flow test parses numeric trajectory bounds and cutoff, inflates the downloaded ZIP with Node built-ins, and proves `selection.csv` contains exactly `1902202/161/0` and `2902388/274/0`, excluding `2902388/274/1`.
 
 Full exact gate rerun: pipeline 38 passed, API 38 passed, web 19 passed, lint/build passed, ordinary Playwright 2 passed, then headed GPU rendering 1 passed. The evaluator again exited 2 configuration-blocked; no live score is claimed.
+
+## Fix round 5 verification
+
+Selected-export QC counters now use only the server-validated, bounded `(wmo, cycle, source_profile_index)` identity set and QC policy; they no longer assert or filter geographic/date fields. This preserves row-limit-independent pre-QC candidate and QC-eligible counts, including QC 3/4 exclusion, for valid `get_profile` export plans. A `/v1/export` regression confirms `get_profile` exports retain 3 and reject 3; the existing `find_profiles` export assertion remains `retained=3` / `rejected=3`.
+
+Full exact gate rerun: pipeline 39 passed (71 warnings), API 39 passed (71 warnings), web 19 passed, lint/build passed, ordinary Playwright 2 passed, then headed GPU rendering 1 passed. GPU evidence was regenerated after ordinary Playwright: 100,000 points measured 57.438 actual R3F FPS with 82.8 ms initialization. The evaluator again exited 2 configuration-blocked; no live score is claimed.

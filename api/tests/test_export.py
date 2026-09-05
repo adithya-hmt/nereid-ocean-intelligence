@@ -2,8 +2,10 @@
 import csv
 import io
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from zipfile import ZipFile
+
+from fastapi.testclient import TestClient
 
 from nereid_api.export import build_evidence_zip
 from nereid_api.models import (
@@ -16,9 +18,9 @@ from nereid_api.models import (
 
 
 def test_export_is_deterministic_and_source_faithful():
-    envelope = ResultEnvelope(query_plan=QueryPlan(operation="get_profile", wmo="1902202", cycle=161), data=[], chart_spec=[], provenance=[Provenance(source_url="https://data-argo.ifremer.fr/dac/aoml/1902202/profiles/D1902202_161.nc", snapshot_doi="https://doi.org/10.17882/42182", fetched_at=datetime(2026, 9, 5, tzinfo=timezone.utc), sha256="a" * 64)], qc_summary=QcSummary(retained=2, rejected=1), methods=[MethodRecord(name="method", version="1", parameters={"units": "dbar"})], assumptions=[], warnings=[])
+    envelope = ResultEnvelope(query_plan=QueryPlan(operation="get_profile", wmo="1902202", cycle=161), data=[], chart_spec=[], provenance=[Provenance(source_url="https://data-argo.ifremer.fr/dac/aoml/1902202/profiles/D1902202_161.nc", snapshot_doi="https://doi.org/10.17882/42182", fetched_at=datetime(2026, 9, 5, tzinfo=UTC), sha256="a" * 64)], qc_summary=QcSummary(retained=2, rejected=1), methods=[MethodRecord(name="method", version="1", parameters={"units": "dbar"})], assumptions=[], warnings=[])
     rows = [{"wmo": "1902202", "cycle": 161, "timestamp": "2023-03-30T20:40:02Z", "pressure_dbar": 10, "temperature_adjusted": 20.0, "temperature_adjusted_qc": 1}, {"wmo": "1902202", "cycle": 161, "timestamp": "2023-03-30T20:40:02Z", "pressure_dbar": 2, "temperature_adjusted": 21.0, "temperature_adjusted_qc": 1}]
-    generated_at = datetime(2026, 9, 5, tzinfo=timezone.utc)
+    generated_at = datetime(2026, 9, 5, tzinfo=UTC)
     payload = build_evidence_zip(envelope, rows, generated_at)
     assert payload == build_evidence_zip(envelope, list(reversed(rows)), generated_at)
     with ZipFile(io.BytesIO(payload)) as archive:
@@ -34,8 +36,6 @@ def test_export_is_deterministic_and_source_faithful():
 
 
 def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
-    from fastapi.testclient import TestClient
-
     from nereid_api.main import create_app
 
     client = TestClient(create_app(snapshot_dir))
@@ -63,3 +63,19 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
 
     altered = client.post("/v1/export", json={"plan": result["query_plan"], "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 99}]})
     assert altered.status_code == 422
+
+
+def test_export_endpoint_accepts_a_valid_get_profile_plan(snapshot_dir):
+    from nereid_api.main import create_app
+
+    client = TestClient(create_app(snapshot_dir))
+    response = client.post("/v1/export", json={
+        "plan": {"operation": "get_profile", "wmo": "1900001", "cycle": 7,
+                 "parameters": ["TEMP", "PSAL"], "qc_mode": "research"},
+        "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}],
+    })
+
+    assert response.status_code == 200
+    with ZipFile(io.BytesIO(response.content)) as archive:
+        methods = json.loads(archive.read("methods.json"))
+        assert methods["qc_summary"] == {"retained": 3, "rejected": 3}

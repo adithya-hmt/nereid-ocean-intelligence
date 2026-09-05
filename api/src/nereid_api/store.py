@@ -65,11 +65,7 @@ _PROFILE_CANDIDATE_COUNT_SQL = """
 
 _SELECTED_CANDIDATE_COUNT_SQL = """
     SELECT count(*) AS row_count FROM levels AS l
-    INNER JOIN profiles AS p USING (wmo, cycle, direction, source_profile_index)
-    WHERE p.longitude BETWEEN ? AND ?
-      AND p.latitude BETWEEN ? AND ?
-      AND CAST(p.timestamp AS DATE) BETWEEN ? AND ?
-      AND list_contains(?, struct_pack(
+    WHERE list_contains(?, struct_pack(
           wmo := l.wmo,
           cycle := l.cycle,
           source_profile_index := l.source_profile_index
@@ -105,7 +101,7 @@ class ArgoStore:
     def _rows(self, sql: str, values: list[Any]) -> list[dict[str, Any]]:
         if sql not in {_FIND_SQL, _PROFILE_SQL, _CANDIDATE_COUNT_SQL, _ELIGIBLE_COUNT_SQL, _PROFILE_CANDIDATE_COUNT_SQL, _SELECTED_CANDIDATE_COUNT_SQL, _SELECTED_ELIGIBLE_COUNT_SQL}:
             raise ValueError("query must be a fixed store template")
-        cursor = self.connection.execute(sql, values)  # noqa: S608  # nosec B608
+        cursor = self.connection.execute(sql, parameters=values)  # nosec B608
         columns = [column[0] for column in cursor.description]
         return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
 
@@ -159,29 +155,25 @@ class ArgoStore:
     def count_selected_candidates(
         self, plan: QueryPlan, identities: set[tuple[str, int, int]]
     ) -> int:
-        """Count unfiltered levels for selected representations within a bounded plan."""
-        assert plan.bbox and plan.start_date and plan.end_date
+        """Count unfiltered levels for server-validated selected representations."""
         if not identities:
             return 0
-        west, south, east, north = plan.bbox
         selected = [
             {"wmo": wmo, "cycle": cycle, "source_profile_index": source_profile_index}
             for wmo, cycle, source_profile_index in identities
         ]
         result = self._rows(
             _SELECTED_CANDIDATE_COUNT_SQL,
-            [west, east, south, north, plan.start_date, plan.end_date, selected],
+            [selected],
         )
         return int(result[0]["row_count"]) if result else 0
 
     def count_selected_qc_eligible(
         self, plan: QueryPlan, identities: set[tuple[str, int, int]]
     ) -> int:
-        """Count policy-allowed selected levels before pagination."""
-        assert plan.bbox and plan.start_date and plan.end_date
+        """Count policy-allowed server-validated selected levels before pagination."""
         if not identities:
             return 0
-        west, south, east, north = plan.bbox
         selected = [
             {"wmo": wmo, "cycle": cycle, "source_profile_index": source_profile_index}
             for wmo, cycle, source_profile_index in identities
@@ -189,8 +181,7 @@ class ArgoStore:
         result = self._rows(
             _SELECTED_ELIGIBLE_COUNT_SQL,
             [
-                west, east, south, north, plan.start_date, plan.end_date, selected,
-                *_qc_values(plan.qc_mode),
+                selected, *_qc_values(plan.qc_mode),
             ],
         )
         return int(result[0]["row_count"]) if result else 0
