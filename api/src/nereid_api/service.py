@@ -118,6 +118,8 @@ class InvestigationService:
         return self._envelope(plan, rows, candidate_count, eligible_count)
 
     def export_selection(self, plan: QueryPlan, selections: list[dict[str, Any]]) -> ResultEnvelope:
+        if plan.operation == "derive_section":
+            raise ValueError("export_selection supports level-row query plans only")
         envelope = self.run_plan(plan)
         requested = {(item["wmo"], item["cycle"], item["source_profile_index"]) for item in selections}
         if len(requested) != len(selections):
@@ -132,12 +134,18 @@ class InvestigationService:
 
     def derive_section(self, request: SectionRequest, query_plan: QueryPlan | None = None) -> ResultEnvelope:
         plan = query_plan or QueryPlan(operation="derive_section", profile_ids=request.profile_ids, parameters=["TEMP", "PSAL"], qc_mode=request.qc_mode)
-        rows = self.store.compare_profiles(request.profile_ids, plan)
-        self._require_exact_representations(plan, rows)
+        scientific_plan = QueryPlan(
+            operation="compare_profiles",
+            profile_ids=request.profile_ids,
+            parameters=["TEMP", "PSAL"],
+            qc_mode=request.qc_mode,
+        )
+        rows = self.store.compare_profiles(request.profile_ids, scientific_plan)
+        self._require_exact_representations(scientific_plan, rows)
         identities = {(item.wmo, item.cycle, item.source_profile_index) for item in request.profile_ids if item.source_profile_index is not None}
-        envelope = self._envelope(plan, rows, self.store.count_selected_candidates(plan, identities), self.store.count_selected_qc_eligible(plan, identities))
+        envelope = self._envelope(plan, rows, self.store.count_selected_candidates(scientific_plan, identities), self.store.count_selected_qc_eligible(scientific_plan, identities))
         grouped: dict[tuple[str, int, int], list[dict[str, Any]]] = defaultdict(list)
-        for row in envelope.data:
+        for row in rows:
             grouped[(row["wmo"], row["cycle"], row["source_profile_index"])].append(row)
         profiles = [grouped[(item.wmo, item.cycle, item.source_profile_index)] for item in request.profile_ids if item.source_profile_index is not None and (item.wmo, item.cycle, item.source_profile_index) in grouped]
         coordinates = [{key: _json_value(levels[0][key]) for key in ("wmo", "cycle", "source_profile_index", "vertical_sampling_scheme", "latitude", "longitude", "timestamp")} for levels in profiles]

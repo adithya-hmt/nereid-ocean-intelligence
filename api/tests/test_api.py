@@ -264,3 +264,27 @@ def test_parameter_specific_qc_and_masking(snapshot_dir, parameters):
 )
 def test_operation_selector_matrix_accepts_each_valid_endpoint_form(snapshot_dir, payload):
     assert TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload).status_code == 200
+
+@pytest.mark.parametrize("parameters", [["PRES"], ["TEMP"]])
+def test_derive_uses_temp_and_salinity_research_policy_even_when_unrequested(snapshot_dir, parameters):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    levels_path = snapshot_dir / "levels.parquet"
+    rows = pq.read_table(levels_path).to_pylist()
+    for row in rows:
+        row["pressure_adjusted_qc"] = 1
+        row["temperature_adjusted_qc"] = 2
+        row["salinity_adjusted_qc"] = 2
+    pq.write_table(pa.Table.from_pylist(rows), levels_path)
+    payload = {"operation": "derive_section", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}], "parameters": parameters, "qc_mode": "research"}
+    response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload)
+    assert response.status_code == 422
+    assert "insufficient or missing requested representation" in response.json()["detail"]
+
+
+def test_export_rejects_derive_section_plan_before_indexing_section_data(snapshot_dir):
+    plan = {"operation": "derive_section", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}], "parameters": ["TEMP", "PSAL"]}
+    response = TestClient(create_app(snapshot_dir)).post("/v1/export", json={"plan": plan, "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}]})
+    assert response.status_code == 422
+    assert response.json()["detail"] == "export_selection supports level-row query plans only"
