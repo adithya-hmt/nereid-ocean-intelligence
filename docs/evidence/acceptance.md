@@ -34,30 +34,26 @@ WMO 2902388/cycle 274 contains two source representations. `source_profile_index
 Run in this order on 2026-09-05:
 
 ```bash
-uv run --project pipeline pytest -v                 # 36 passed (71 dependency warnings)
-uv run --project api pytest -v                      # 36 passed (71 dependency warnings)
+uv run --project pipeline pytest -v                 # 37 passed (71 dependency warnings)
+uv run --project api pytest -v                      # 37 passed (71 dependency warnings)
 pnpm --dir web test                                 # 6 files / 18 tests passed
 pnpm --dir web lint                                 # passed
 pnpm --dir web build                                # passed
 pnpm --dir web exec playwright test                 # 2 passed
 NEREID_BENCHMARK_GPU=1 pnpm --dir web exec playwright test e2e/rendering.spec.ts  # 1 passed
 uv run --project api python docs/evidence/evaluate_queries.py
-# corpus: 30 cases; validator-valid: 25; rejection cases: 5;
-# planner score: unmeasured (Azure configuration unavailable)
+# exits 2: planner evaluation BLOCKED: Azure configuration unavailable;
+# no live score measured
 ```
 
-The full Playwright command runs the rendering test and therefore overwrites `rendering.json`; the headed GPU command was deliberately run afterwards to regenerate Task 6 GPU evidence. It used system Chromium 151.0.0.0 on DISPLAY `:0` / Wayland and reported Intel UHD Graphics 620. The regenerated 100,000-point result was 45.349 actual R3F FPS; see `rendering.json` for browser user agent, renderer, and probe details.
+The full Playwright command runs the rendering test and therefore overwrites `rendering.json`; the headed GPU command was deliberately run afterwards to regenerate Task 6 GPU evidence. It used system Chromium 151.0.0.0 on DISPLAY `:0` / Wayland and reported Intel UHD Graphics 620. The regenerated 100,000-point result was 58.433 actual R3F FPS (110.7 ms initialization); see `rendering.json` for browser user agent, renderer, and probe details.
 
 `web/e2e/winning-flow.spec.ts` starts FastAPI against the committed snapshot and Next.js with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`. It blocks every browser request whose host is not loopback, executes the March filters, confirms both WMO/cycle identities, native depth plot, receipt DOI/QC/method/provenance and the multiple-scheme warning, downloads `nereid-evidence.zip`, and verifies the five ZIP member names. It fails if synthetic or test-only fallback labels are visible. The focused API export test also verifies exact member order, deterministic bytes for reordered input, sorted selected rows, QC/source fields, units, query plan, QC counts, and download disposition.
 
 ## Planner corpus
 
-`query-cases.json` contains exactly 30 diverse natural-language questions: 25 bounded allowed-operation/filter cases and exactly 5 unbounded or injection-like rejection cases. `evaluate_queries.py` validates corpus contracts only. Azure endpoint, key, deployment, and API-version variables were unset. The real evaluator was run and exited 2 with `planner evaluation BLOCKED: Azure configuration unavailable; no score measured`. Therefore the **Task 8 planner gate is BLOCKED**, live planner accuracy is unmeasured, and no score such as 27/30 is claimed. No local natural-language parser was added.
+`query-cases.json` contains exactly 30 diverse natural-language questions: 25 bounded allowed-operation/filter cases and exactly 5 unbounded or injection-like rejection cases. `evaluate_queries.py` invokes configured Azure planning, compares every returned operation and expected filter, and exits nonzero below 27/30. Azure endpoint, key, deployment, and API-version variables were unset, so this run exited 2 with `planner evaluation BLOCKED: Azure configuration unavailable; no score measured`. Therefore the **Task 8 planner gate is BLOCKED**, live planner accuracy is unmeasured, and no score such as 27/30 is claimed. No local natural-language parser was added.
 
 ## Hygiene and limitations
 
 `git diff --check` passed. `.env` is ignored (`.gitignore:4`); local snapshots other than the explicit committed replay directory are ignored. `gitleaks` and `trufflehog` were not installed, so no dedicated secret scanner was available; this run did not claim a secret-scan pass. `pnpm --dir web licenses list` enumerated the installed web dependency licenses; no third-party source or asset was added. Repository history/diff and project text were inspected for Task 8 originality, but repository evidence cannot prove absence of copying outside the repository.
-
-## Fix round 3 verification
-
-The exact final gate rerun passed: pipeline/API each 37 tests, web 18 tests, lint, build, and ordinary Playwright 2 tests. GPU evidence was regenerated afterward. The current committed `rendering.json` records 58.433 R3F FPS for 100,000 points (initialization 110.7 ms). The actual evaluator exited 2: configuration-blocked, with no score measured; Task 8 remains blocked pending Azure >=27/30.

@@ -5,20 +5,20 @@
 - Added deterministic evidence ZIP construction and `POST /v1/export`; archives have stable member order, timestamps, JSON key ordering, and source-row sorting.
 - Added the committed official GDAC replay snapshot (3 source representations / 1,999 levels) and retained both WMO 2902388/cycle 274 sampling representations through normalize, DuckDB joins, metrics, API results, receipt, and export.
 - Added explicit multiple-scheme warning and method/assumption disclosure; QC 3/4 remain excluded.
-- Replaced the placeholder corpus with 25 diverse bounded cases plus exactly 5 rejection cases. Azure is unconfigured, so the evaluation honestly reports corpus/validator readiness only.
+- Replaced the placeholder corpus with 25 diverse bounded cases plus exactly 5 rejection cases. The evaluator invokes configured Azure, compares all expected filters, and enforces a 27/30 threshold; Azure is currently unconfigured, so its live gate is BLOCKED.
 - Added browser acceptance startup against the committed snapshot and a loopback-only winning-flow test covering March filters, both identities, profile display, receipt/provenance/QC/methods, ZIP download, member names, and absence of synthetic fallback labels.
 - Recorded measured snapshot, latency, browser/rendering, gate ordering, and hygiene limitations in `docs/evidence/acceptance.md`.
 
 ## Tests and checks
 
-- `uv run --project pipeline pytest -v` — 36 passed (71 dependency warnings).
-- `uv run --project api pytest -v` — 36 passed (71 dependency warnings).
+- `uv run --project pipeline pytest -v` — 37 passed (71 dependency warnings).
+- `uv run --project api pytest -v` — 37 passed (71 dependency warnings).
 - `pnpm --dir web test` — 18 passed.
 - `pnpm --dir web lint` — passed.
 - `pnpm --dir web build` — passed.
 - `pnpm --dir web exec playwright test` — 2 passed.
 - `NEREID_BENCHMARK_GPU=1 pnpm --dir web exec playwright test e2e/rendering.spec.ts` — 1 passed, run after the ordinary browser suite to restore headed GPU evidence.
-- `uv run --project api python docs/evidence/evaluate_queries.py` — 30 corpus cases / 25 validator-valid / 5 rejection / planner unmeasured.
+- `uv run --project api python docs/evidence/evaluate_queries.py` — expected exit 2: Azure configuration-blocked; no live score measured.
 - `git diff --check` — passed.
 - `pnpm --dir web licenses list` — completed; installed web licenses enumerated.
 - A targeted tracked-file secret-pattern grep found no matches; `gitleaks` and `trufflehog` were unavailable.
