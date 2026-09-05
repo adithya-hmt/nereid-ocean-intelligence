@@ -31,13 +31,13 @@ WMO 2902388/cycle 274 contains two source representations. `source_profile_index
 
 ## Validation run
 
-Run on 2026-09-05 after R8 metric-dependency remediation:
+Run on 2026-09-05 after R9 final release seam verification:
 
 ```bash
 uv run --directory pipeline pytest -q  # passed: 7 tests (186 warnings)
-uv run --directory api pytest -q  # passed: 88 tests (2 warnings)
+uv run --directory api pytest -q  # passed: 93 tests (2 warnings)
 uv run --directory api ruff check src/nereid_api/service.py tests/test_api.py  # passed
-npm --prefix web test -- --run  # passed: 9 files / 26 tests
+npm --prefix web test -- --run  # passed: 9 files / 30 tests
 npm --prefix web run lint  # passed
 npm --prefix web run build  # passed
 cd web && npx playwright test --workers=1  # passed: 2 tests / 2 tests

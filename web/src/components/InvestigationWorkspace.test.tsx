@@ -178,3 +178,41 @@ test('a successful planner response applies its plan and exits planning', async 
   await waitFor(() => expect((screen.getByLabelText('Row limit') as HTMLInputElement).value).toBe('9'))
   expect(screen.getByRole('button', { name: 'Interpret question' })).toBeDefined()
 })
+
+test('a stale planner cannot replace a later explicit execution', async () => {
+  let resolvePlanner: (value: PlannerResponse) => void = () => undefined
+  mockedInterpretQuestion.mockImplementationOnce(() => new Promise((resolve) => { resolvePlanner = resolve }))
+  mockedExecuteQuery.mockResolvedValue({ ...response, data: [row('1900099', 99, 0)] })
+  render(<InvestigationWorkspace />)
+  fireEvent.change(screen.getByLabelText('Question (optional)'), { target: { value: 'Find profiles' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Interpret question' }))
+  await waitFor(() => expect(mockedInterpretQuestion).toHaveBeenCalledTimes(1))
+  const plannerSignal = mockedInterpretQuestion.mock.calls[0][1]!
+  fireEvent.click(screen.getByRole('button', { name: 'Run investigation' }))
+  await screen.findByLabelText(/1900099 \/ cycle 99 \/ A \/ representation 0/)
+  expect(plannerSignal.aborted).toBe(true)
+  resolvePlanner({ plan: { ...response.query_plan, row_limit: 9 }, planner: 'azure', warnings: ['stale warning'] })
+  await waitFor(() => expect(screen.queryByText('stale warning')).toBeNull())
+  expect((screen.getByLabelText('Row limit') as HTMLInputElement).value).toBe('10000')
+  expect(screen.getByRole('button', { name: 'Interpret question' })).toBeDefined()
+})
+
+test('a direct section renders only the cross-section, not profile or trajectory fallbacks', () => {
+  render(<InvestigationWorkspace initialResult={{ ...section, query_plan: { ...section.query_plan, operation: 'derive_section', profile_ids: [{ wmo: '1900001', cycle: 7, direction: 'A', source_profile_index: 0 }, { wmo: '1900002', cycle: 8, direction: 'A', source_profile_index: 0 }] }, section_request: { profile_ids: [{ wmo: '1900001', cycle: 7, direction: 'A', source_profile_index: 0 }, { wmo: '1900002', cycle: 8, direction: 'A', source_profile_index: 0 }], qc_mode: 'research', parameters: ['TEMP', 'PSAL'], row_limit: 10000, depth_step_m: 10, max_time_gap_hours: 168, max_distance_km: 500, max_vertical_gap_m: 100 } }} />)
+  expect(screen.getByRole('table', { name: 'Cross-section observations' })).toBeDefined()
+  expect(screen.queryByText(/returned observations have no complete/)).toBeNull()
+  expect(screen.queryByText('Derived cross-section')).toBeNull()
+  expect(screen.queryByText('Scientific receipt')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Download evidence ZIP' })).toBeNull()
+})
+
+test('forwards all linked section controls, row limit, and effective parameters', async () => {
+  mockedDeriveSection.mockResolvedValue(section)
+  render(<InvestigationWorkspace initialResult={{ ...response, query_plan: { ...response.query_plan, parameters: ['TEMP'], row_limit: 77 } }} />)
+  for (const [label, value] of [['Depth step (m)', '11'], ['Maximum time gap (hours)', '22'], ['Maximum distance (km)', '33'], ['Maximum vertical gap (m)', '44']] as const) fireEvent.change(screen.getByLabelText(label), { target: { value } })
+  fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
+  await waitFor(() => expect(mockedDeriveSection).toHaveBeenCalledWith(expect.objectContaining({ parameters: ['TEMP'], row_limit: 77, depth_step_m: 11, max_time_gap_hours: 22, max_distance_km: 33, max_vertical_gap_m: 44 }), expect.anything()))
+  render(<InvestigationWorkspace initialResult={{ ...response, query_plan: { ...response.query_plan, parameters: ['PRES'] } }} />)
+  expect(screen.getAllByRole('status').at(-1)?.textContent).toContain('requires requested TEMP and/or PSAL')
+  expect(screen.getAllByRole('button', { name: 'Derive section from selected representations' }).at(-1)?.hasAttribute('disabled')).toBe(true)
+})

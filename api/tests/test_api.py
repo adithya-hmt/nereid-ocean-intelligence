@@ -1,10 +1,14 @@
 # ruff: noqa: I001
 # pyright: reportMissingImports=false
+from typing import Any, cast
+
 import pytest
 from fastapi.testclient import TestClient
 
 from nereid_api.main import create_app
+from nereid_api.models import QueryPlan
 from nereid_api.planner import AzurePlanner
+from nereid_api.service import InvestigationService
 
 
 class FakeCompletions:
@@ -191,6 +195,28 @@ def test_section_masks_unsupported_gap(snapshot_dir):
         {"left_profile_index": 0, "right_profile_index": 1, "reason": "time_gap"}
     ]
     assert all(cell["temperature"] is None for cell in section["section_cells"])
+
+
+@pytest.mark.parametrize(
+    ("parameters", "requested_field", "masked_field"),
+    [(["TEMP"], "temperature", "salinity"), (["PSAL"], "salinity", "temperature"), ([], "temperature", None)],
+)
+def test_section_parameter_masks_and_methods_are_replay_complete(snapshot_dir, parameters, requested_field, masked_field):
+    ids = [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}]
+    response = TestClient(create_app(snapshot_dir)).post("/v1/sections/derive", json={"profile_ids": list(reversed(ids)), "parameters": parameters, "max_time_gap_hours": 744, "max_distance_km": 2000})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["section_request"]["row_limit"] == 10000
+    assert body["section_request"]["parameters"] == (parameters or ["TEMP", "PSAL"])
+    cells = body["data"][0]["section_cells"]
+    assert cells
+    if masked_field:
+        assert all(cell[masked_field] is None for cell in cells)
+    assert any(cell[requested_field] is not None for cell in cells)
+    coordinates = body["data"][0]["observation_coordinates"]
+    assert coordinates == sorted(coordinates, key=lambda coordinate: (coordinate["timestamp"], coordinate["wmo"], coordinate["cycle"], coordinate["direction"], coordinate["source_profile_index"]))
+    assert [method["name"] for method in body["methods"]] == ["duckdb_parameterized_profile_query", "teos_10_snapshot_normalization", "gap_masked_linear_section"]
+    assert all(method["units"] for method in body["methods"])
 
 
 def test_text_planning_falls_back_to_explicit_filters_without_azure(
@@ -508,6 +534,31 @@ def test_nearest_receipt_is_scoped_to_complete_selected_representations(snapshot
     assert body["qc_summary"] == {"retained": 4, "rejected": 8}
     assert "Results truncated to the requested row limit." not in body["warnings"]
     assert body["methods"][0]["parameters"]["float_count"] == 2
+
+
+def test_nearest_preflight_refuses_before_level_fetch():
+    class RecordingStore:
+        def __init__(self) -> None:
+            self.level_fetches = 0
+
+        def nearest_identities(self, _plan):
+            return [("a", 1, "A", 0), ("b", 2, "A", 0)]
+
+        def count_selected_candidates(self, _plan, _identities):
+            return 4
+
+        def count_selected_qc_eligible(self, _plan, _identities):
+            return 2
+
+        def compare_profiles(self, _ids, _plan):
+            self.level_fetches += 1
+            return []
+
+    store = RecordingStore()
+    plan = QueryPlan(operation="nearest_floats", bbox=(60, 0, 80, 20), start_date="2023-03-01", end_date="2023-03-31", float_count=2, row_limit=1)
+    with pytest.raises(ValueError, match="nearest representations exceed row_limit"):
+        InvestigationService(cast(Any, store)).run_plan(plan)
+    assert store.level_fetches == 0
 
 
 def test_nearest_fewer_available_is_truthful_and_overflow_refuses_without_partial_rows(snapshot_dir):
