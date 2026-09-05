@@ -21,11 +21,12 @@ export interface Provenance { source_url: string; snapshot_doi: string; fetched_
 export interface QcSummary { retained: number; rejected: number }
 export interface MethodRecord { name: string; version: string; parameters: Record<string, unknown> }
 export interface SectionRequest { profile_ids: Array<ProfileIdentifier & { source_profile_index: number }>; qc_mode: QcPolicy; depth_step_m: number; max_time_gap_hours: number; max_distance_km: number }
+export type ProfileMetricId = 'principal_thermocline' | 'strongest_salinity_gradient'
 export interface ProfileMetric {
   wmo: string
   cycle: number
   source_profile_index: number
-  name: string
+  name: ProfileMetricId
   value: number
   depth_m: number
   units: string
@@ -33,6 +34,32 @@ export interface ProfileMetric {
   algorithm: string
   parameters: Record<string, unknown>
   quality_label: string
+}
+export interface SectionObservationCoordinate {
+  wmo: string
+  cycle: number
+  source_profile_index: number
+  vertical_sampling_scheme: string
+  latitude: number
+  longitude: number
+  timestamp: string
+}
+export interface SectionCell {
+  left_profile_index: number
+  right_profile_index: number
+  depth_m: number
+  temperature: number | null
+  salinity: number | null
+}
+export interface MaskedGap {
+  left_profile_index: number
+  right_profile_index: number
+  reason: string
+}
+export interface SectionData {
+  observation_coordinates?: SectionObservationCoordinate[]
+  section_cells?: SectionCell[]
+  masked_gaps?: MaskedGap[]
 }
 export interface ChartSpec { profile_metrics?: ProfileMetric[]; section?: Record<string, unknown>; [key: string]: unknown }
 export interface ResultEnvelope {

@@ -31,12 +31,13 @@ WMO 2902388/cycle 274 contains two source representations. `source_profile_index
 
 ## Validation run
 
-Run on 2026-09-05 after R3 fix round 1:
+Run on 2026-09-05 after R5 exact-rendering remediation:
 
 ```bash
 uv run --project pipeline pytest pipeline/tests -v  # passed: 7 tests (186 warnings)
 uv run --project api pytest api/tests -v            # passed: 57 tests (2 warnings)
-pnpm --dir web test --run                           # passed: 7 files / 19 tests
+pnpm --dir web test --run src/components/InvestigationWorkspace.test.tsx  # passed: 1 file / 8 tests
+pnpm --dir web test --run                           # passed: 7 files / 20 tests
 pnpm --dir web lint                                 # passed
 pnpm --dir web build                                # passed
 pnpm --dir web exec playwright test                 # passed: 2 tests
@@ -45,7 +46,7 @@ uv run --project api python docs/evidence/evaluate_queries.py
 # exits 2: planner evaluation BLOCKED: Azure configuration unavailable; no live score measured
 ```
 
-The full offline Playwright replay selects exactly `1902202/161/0` and `2902388/274/0`, renders two separate profile panels and metric/refusal states, derives a gap-masked section from those IDs, verifies longitude/latitude/depth/time trajectory metadata, and confirms the same two IDs are posted to the offline evidence export endpoint. The GPU benchmark was run last among browser measurements. `rendering.json` records Intel UHD Graphics 620 and an actual 100,000-point R3F result of **58.303 FPS** (119.6 ms initialization); the hardware-mode test requires at least 30 FPS. The default SwiftShader/headless mode requires only completion with a positive measured FPS, so it does not falsify the hardware target.
+The full offline Playwright replay selects exactly `1902202/161/0` and `2902388/274/0`, renders two separate profile panels and at least one real committed-snapshot metric with its value, units, vertical uncertainty, method, and QC, derives a gap-masked section from those IDs, verifies longitude/latitude/depth/time trajectory metadata, and confirms the same two IDs are posted to the offline evidence export endpoint. Metric API identifiers are rendered only from the canonical `principal_thermocline` and `strongest_salinity_gradient` IDs; human labels are separate. The accessible section alternative retains every coordinate identity field, distinguishes duplicate WMO/cycle representations, reports each null cell's matching time/distance gap (or masked), and calls non-null cells interpolated derived rather than observed. The GPU benchmark was run last among browser measurements. `rendering.json` records Intel UHD Graphics 620 and an actual 100,000-point R3F result of **59.235 FPS** (139.6 ms initialization); the hardware-mode test requires at least 30 FPS. The default SwiftShader/headless mode requires only completion with a positive measured FPS, so it does not falsify the hardware target.
 
 Tracked-file scanning found no high-confidence API key/private-key patterns. `pnpm --dir web licenses list` completed (955 output lines). `lens_diagnostics mode=all` could not be measured because the executable is unavailable in this environment. `git diff --check` passed.
 

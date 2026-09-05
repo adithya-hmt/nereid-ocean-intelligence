@@ -1,30 +1,20 @@
 import { Fragment } from 'react'
-import type { ProfileIdentifier, ResultEnvelope } from '../lib/types'
-
-type Metric = {
-  wmo: string
-  cycle: number
-  source_profile_index: number
-  name: string
-  value: number
-  depth_m: number
-  units: string
-  uncertainty_m: number
-  algorithm: string
-  parameters: Record<string, unknown>
-  quality_label: string
-}
+import type { ProfileIdentifier, ProfileMetric, ProfileMetricId, ResultEnvelope } from '../lib/types'
 
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 const identity = (item: ProfileIdentifier) => `${item.wmo}/${item.cycle}/${item.source_profile_index}`
-const metricNames = ['principal thermocline', 'strongest salinity gradient']
+const metricLabels: Record<ProfileMetricId, string> = {
+  principal_thermocline: 'Principal thermocline',
+  strongest_salinity_gradient: 'Strongest salinity gradient',
+}
+const metricIds = Object.keys(metricLabels) as ProfileMetricId[]
 
-function metricsFrom(result: ResultEnvelope): Metric[] {
+function metricsFrom(result: ResultEnvelope): ProfileMetric[] {
   return result.chart_spec.flatMap((spec) => {
     const metrics = spec.profile_metrics
     if (!Array.isArray(metrics)) return []
     return metrics.flatMap((item) => {
-      if (typeof item.wmo !== 'string' || !finite(item.cycle) || !finite(item.source_profile_index) || typeof item.name !== 'string' || !finite(item.value) || !finite(item.depth_m) || typeof item.units !== 'string' || !finite(item.uncertainty_m) || typeof item.algorithm !== 'string' || typeof item.quality_label !== 'string') return []
+      if (typeof item.wmo !== 'string' || !finite(item.cycle) || !finite(item.source_profile_index) || !(item.name in metricLabels) || !finite(item.value) || !finite(item.depth_m) || typeof item.units !== 'string' || !finite(item.uncertainty_m) || typeof item.algorithm !== 'string' || typeof item.quality_label !== 'string') return []
       return [{ wmo: item.wmo, cycle: item.cycle, source_profile_index: item.source_profile_index, name: item.name, value: item.value, depth_m: item.depth_m, units: item.units, uncertainty_m: item.uncertainty_m, algorithm: item.algorithm, parameters: typeof item.parameters === 'object' && item.parameters !== null ? item.parameters as Record<string, unknown> : {}, quality_label: item.quality_label }]
     })
   })
@@ -35,9 +25,10 @@ export function ProfileMetrics({ result, selections }: { result: ResultEnvelope;
   if (!selections.length) return null
   return <section className="profile-metrics" aria-labelledby="metrics-heading"><h2 id="metrics-heading">Profile metrics</h2>{selections.map((selection) => {
     const selectedMetrics = metrics.filter((metric) => identity(metric) === identity(selection))
-    return <article key={identity(selection)} aria-label={`Metrics for ${identity(selection)}`}><h3>{selection.wmo} / cycle {selection.cycle} / representation {selection.source_profile_index}</h3>{metricNames.map((name) => {
-      const metric = selectedMetrics.find((item) => item.name === name)
-      return metric ? <dl key={name}><dt>{metric.name}</dt><dd>{metric.value} {metric.units} at {metric.depth_m} m</dd><dt>Vertical uncertainty</dt><dd>±{metric.uncertainty_m} m</dd><dt>Method</dt><dd>{metric.algorithm}</dd><dt>QC</dt><dd>{metric.quality_label}</dd>{Object.entries(metric.parameters).filter(([parameter]) => parameter.includes('error')).map(([parameter, value]) => <Fragment key={parameter}><dt>{parameter}</dt><dd>{String(value)}</dd></Fragment>)}</dl> : <p key={name} role="status">Insufficient evidence for {name} for {selection.wmo} / cycle {selection.cycle} / representation {selection.source_profile_index}.</p>
+    return <article key={identity(selection)} aria-label={`Metrics for ${identity(selection)}`}><h3>{selection.wmo} / cycle {selection.cycle} / representation {selection.source_profile_index}</h3>{metricIds.map((metricId) => {
+      const metric = selectedMetrics.find((item) => item.name === metricId)
+      const label = metricLabels[metricId]
+      return metric ? <dl key={metricId}><dt>{label}</dt><dd>{metric.value} {metric.units} at {metric.depth_m} m</dd><dt>Vertical uncertainty</dt><dd>±{metric.uncertainty_m} m</dd><dt>Method</dt><dd>{metric.algorithm}</dd><dt>QC</dt><dd>{metric.quality_label}</dd>{Object.entries(metric.parameters).filter(([parameter]) => parameter.includes('error')).map(([parameter, value]) => <Fragment key={parameter}><dt>{parameter}</dt><dd>{String(value)}</dd></Fragment>)}</dl> : <p key={metricId} role="status">Insufficient evidence for {label} for {selection.wmo} / cycle {selection.cycle} / representation {selection.source_profile_index}.</p>
     })}</article>
   })}</section>
 }

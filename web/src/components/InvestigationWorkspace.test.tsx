@@ -2,18 +2,21 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { vi } from 'vitest'
 
 import { deriveSection, executeQuery, interpretQuestion } from '../lib/api'
+import { CrossSectionPlot } from './CrossSectionPlot'
 import { InvestigationWorkspace } from './InvestigationWorkspace'
+import type { ResultEnvelope } from '../lib/types'
 
 vi.mock('../lib/api', () => ({ ApiError: class ApiError extends Error {}, executeQuery: vi.fn(), interpretQuestion: vi.fn(), deriveSection: vi.fn(), exportEvidence: vi.fn() }))
 
 const row = (wmo: string, cycle: number, source_profile_index: number) => ({ wmo, cycle, source_profile_index, vertical_sampling_scheme: 'primary', depth_m: 10, latitude: 10, longitude: 70, timestamp: '2023-03-15T00:00:00Z', temperature_raw: 28, salinity_raw: 34, conservative_temperature: 27.9, absolute_salinity: 34.01 })
-const response = {
+const response: ResultEnvelope = {
   query_plan: { operation: 'find_profiles' as const, bbox: [60, 0, 80, 20] as [number, number, number, number], start_date: '2023-03-01', end_date: '2023-03-31', parameters: ['TEMP', 'PSAL'] as ('TEMP' | 'PSAL')[], qc_mode: 'research' as const, row_limit: 10000 },
   data: [row('1900001', 7, 0), row('1900002', 8, 0), row('1900003', 9, 0)],
-  chart_spec: [{ profile_metrics: [{ wmo: '1900001', cycle: 7, source_profile_index: 0, name: 'principal thermocline', value: -0.2, depth_m: 50, units: 'degC m-1', uncertainty_m: 10, algorithm: 'three_level', parameters: { adjusted_error_max: 0.1 }, quality_label: 'research QC 1' }] }],
+  chart_spec: [{ profile_metrics: [{ wmo: '1900001', cycle: 7, source_profile_index: 0, name: 'principal_thermocline', value: -0.2, depth_m: 50, units: 'degC m-1', uncertainty_m: 10, algorithm: 'three_level', parameters: { adjusted_error_max: 0.1 }, quality_label: 'research QC 1' }] }],
   provenance: [{ source_url: 'https://example.test/a.nc', snapshot_doi: '10.1234/nereid', fetched_at: '2023-03-26T00:00:00Z', sha256: 'a'.repeat(64) }], qc_summary: { retained: 3, rejected: 2 }, methods: [{ name: 'duckdb_parameterized_profile_query', version: '1', parameters: {} }], assumptions: [], warnings: [], answer: null,
 }
-const section = { ...response, data: [{ observation_coordinates: [{ wmo: '1900001', cycle: 7 }, { wmo: '1900002', cycle: 8 }], section_cells: [{ left_profile_index: 0, right_profile_index: 1, depth_m: 10, temperature: null, salinity: null }], masked_gaps: [{ reason: 'time_gap' }] }], chart_spec: [] }
+const coordinate = (wmo: string, cycle: number, source_profile_index: number, vertical_sampling_scheme: string, latitude: number, longitude: number, timestamp: string) => ({ wmo, cycle, source_profile_index, vertical_sampling_scheme, latitude, longitude, timestamp })
+const section: ResultEnvelope = { ...response, data: [{ observation_coordinates: [coordinate('1900001', 7, 0, 'primary', 10, 70, '2023-03-15T00:00:00Z'), coordinate('1900002', 8, 0, 'primary', 11, 71, '2023-03-16T00:00:00Z')], section_cells: [{ left_profile_index: 0, right_profile_index: 1, depth_m: 10, temperature: null, salinity: null }], masked_gaps: [{ left_profile_index: 0, right_profile_index: 1, reason: 'time_gap' }] }], chart_spec: [] }
 const mockedExecuteQuery = vi.mocked(executeQuery)
 const mockedInterpretQuestion = vi.mocked(interpretQuestion)
 const mockedDeriveSection = vi.mocked(deriveSection)
@@ -27,6 +30,7 @@ test('links exactly two default representations across plots and metric refusals
   expect(screen.getAllByRole('img', { name: /Conservative Temperature/ })).toHaveLength(2)
   expect(screen.queryByRole('img', { name: /1900003 cycle 9/ })).toBeNull()
   expect(screen.getByText(/-0.2 degC m-1 at 50 m/)).toBeDefined()
+  expect(screen.getByText('Principal thermocline')).toBeDefined()
   expect(screen.getAllByText(/Insufficient evidence for/).length).toBeGreaterThan(0)
   fireEvent.click(screen.getByRole('radio', { name: 'Raw observations' }))
   expect(screen.getAllByRole('img', { name: /in-situ Temperature \(degC\) and Practical Salinity \(PSS-78, unitless\)/ })).toHaveLength(2)
@@ -81,6 +85,35 @@ test('a replacement query invalidates an older section response', async () => {
   resolveQuery({ ...response, data: [row('1900010', 10, 0), row('1900011', 11, 0)] })
   await screen.findByLabelText(/1900010 \/ cycle 10 \/ representation 0/)
   expect(screen.queryByRole('table', { name: 'Cross-section observations' })).toBeNull()
+})
+
+test('uses each gap reason and exact representations in the section alternatives', () => {
+  const multiGapSection: ResultEnvelope = {
+    ...section,
+    data: [{
+      observation_coordinates: [
+        coordinate('1900001', 7, 0, 'primary', 10, 70, '2023-03-15T00:00:00Z'),
+        coordinate('1900001', 7, 1, 'secondary', 10.1, 70.1, '2023-03-16T00:00:00Z'),
+        coordinate('1900002', 8, 0, 'primary', 11, 71, '2023-03-17T00:00:00Z'),
+      ],
+      section_cells: [
+        { left_profile_index: 0, right_profile_index: 1, depth_m: 10, temperature: null, salinity: null },
+        { left_profile_index: 1, right_profile_index: 2, depth_m: 10, temperature: null, salinity: null },
+        { left_profile_index: 0, right_profile_index: 1, depth_m: 20, temperature: 25, salinity: 34 },
+      ],
+      masked_gaps: [
+        { left_profile_index: 0, right_profile_index: 1, reason: 'time_gap' },
+        { left_profile_index: 1, right_profile_index: 2, reason: 'distance_gap' },
+      ],
+    }],
+  }
+  render(<CrossSectionPlot result={multiGapSection} />)
+  expect(screen.getByText(/Observed coordinate: 1900001 \/ cycle 7 \/ representation 0 \/ primary/)).toBeDefined()
+  expect(screen.getByText(/Observed coordinate: 1900001 \/ cycle 7 \/ representation 1 \/ secondary/)).toBeDefined()
+  expect(screen.getByRole('table', { name: 'Cross-section observations' }).textContent).toContain('time gap')
+  expect(screen.getByRole('table', { name: 'Cross-section observations' }).textContent).toContain('distance gap')
+  expect(screen.getByRole('table', { name: 'Cross-section observations' }).textContent).toContain('interpolated derived')
+  expect(screen.getByRole('table', { name: 'Cross-section observations' }).textContent).not.toContain('observed')
 })
 
 test('shows that explicit filters still work when AI interpretation is unavailable', async () => {
