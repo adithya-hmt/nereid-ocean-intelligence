@@ -15,8 +15,8 @@ from pydantic import JsonValue
 from nereid_api.analytics import principal_thermocline, strongest_salinity_gradient
 from nereid_api.models import (
     DataMode,
+    DerivedObservationSeries,
     MethodRecord,
-    ObservationSeries,
     ProfileSeries,
     Provenance,
     QcPolicy,
@@ -53,17 +53,13 @@ def _profile_metrics(rows: list[dict[str, Any]], policy: QcPolicy) -> list[dict[
     metrics: list[dict[str, Any]] = []
     for (wmo, cycle, source_profile_index), levels in grouped.items():
         first = levels[0]
-        temperature = ObservationSeries(
-            raw_values=[row["temperature_raw"] for row in levels],
-            raw_qc=[row["temperature_qc"] for row in levels],
-            adjusted_values=[row["temperature_adjusted"] for row in levels],
+        temperature = DerivedObservationSeries(
+            values=[row["conservative_temperature"] for row in levels],
             adjusted_qc=[row["temperature_adjusted_qc"] for row in levels],
             adjusted_errors=[row["temperature_adjusted_error"] for row in levels],
         )
-        salinity = ObservationSeries(
-            raw_values=[row["salinity_raw"] for row in levels],
-            raw_qc=[row["salinity_qc"] for row in levels],
-            adjusted_values=[row["salinity_adjusted"] for row in levels],
+        salinity = DerivedObservationSeries(
+            values=[row["absolute_salinity"] for row in levels],
             adjusted_qc=[row["salinity_adjusted_qc"] for row in levels],
             adjusted_errors=[row["salinity_adjusted_error"] for row in levels],
         )
@@ -77,6 +73,8 @@ def _profile_metrics(rows: list[dict[str, Any]], policy: QcPolicy) -> list[dict[
             data_mode=DataMode(first["data_mode"]),
             conservative_temperature=temperature,
             absolute_salinity=salinity,
+            pressure_adjusted_qc=[row["pressure_adjusted_qc"] for row in levels],
+            pressure_adjusted_errors=[row["pressure_adjusted_error"] for row in levels],
         )
         for metric in (principal_thermocline(profile, policy), strongest_salinity_gradient(profile, policy)):
             if metric is not None:
@@ -133,6 +131,9 @@ class InvestigationService:
             if eligible_count > len(rows)
             else []
         )
+        for field, label in (("temperature_adjusted_error", "temperature"), ("salinity_adjusted_error", "salinity"), ("pressure_adjusted_error", "pressure")):
+            if rows and not any(np.isfinite(row[field]) for row in rows if row[field] is not None):
+                warnings.append(f"Adjusted {label} error is unavailable for retained observations.")
         schemes = {(row["wmo"], row["cycle"]): set() for row in rows}
         for row in rows:
             schemes[(row["wmo"], row["cycle"])].add(row["vertical_sampling_scheme"])

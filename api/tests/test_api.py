@@ -1,13 +1,18 @@
 # pyright: reportMissingImports=false
 from fastapi.testclient import TestClient
+
 from nereid_api.main import create_app
 from nereid_api.planner import AzurePlanner
 
 
 class FakeCompletions:
     async def parse(self, **kwargs: object) -> object:
-        message = type("Message", (), {"parsed": {"operation": "find_profiles"}, "refusal": None})()
-        return type("Response", (), {"choices": [type("Choice", (), {"message": message})()]})()
+        message = type(
+            "Message", (), {"parsed": {"operation": "find_profiles"}, "refusal": None}
+        )()
+        return type(
+            "Response", (), {"choices": [type("Choice", (), {"message": message})()]}
+        )()
 
 
 class FakeClient:
@@ -52,7 +57,9 @@ def test_empty_result_is_a_successful_widening_suggestion(snapshot_dir):
     )
 
     assert response.status_code == 200
-    assert response.json()["warnings"] == ["No matching profiles; widen one bounded filter."]
+    assert response.json()["warnings"] == [
+        "No matching profiles; widen one bounded filter."
+    ]
 
 
 def test_paginated_result_reports_only_qc_rejections(snapshot_dir):
@@ -72,7 +79,7 @@ def test_paginated_result_reports_only_qc_rejections(snapshot_dir):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["qc_summary"] == {"retained": 2, "rejected": 6}
+    assert body["qc_summary"] == {"retained": 2, "rejected": 8}
     assert body["warnings"] == ["Results truncated to the requested row limit."]
 
 
@@ -90,7 +97,9 @@ def test_same_bbox_with_excluding_dates_returns_no_match(snapshot_dir):
     )
 
     assert response.status_code == 200
-    assert response.json()["warnings"] == ["No matching profiles; widen one bounded filter."]
+    assert response.json()["warnings"] == [
+        "No matching profiles; widen one bounded filter."
+    ]
 
 
 def test_section_masks_unsupported_gap(snapshot_dir):
@@ -110,7 +119,7 @@ def test_section_masks_unsupported_gap(snapshot_dir):
     body = response.json()
     assert body["query_plan"]["operation"] == "derive_section"
     assert body["provenance"]
-    assert body["qc_summary"] == {"retained": 8, "rejected": 4}
+    assert body["qc_summary"] == {"retained": 6, "rejected": 6}
     assert body["methods"]
     assert body["assumptions"]
     assert body["warnings"] == []
@@ -123,27 +132,42 @@ def test_section_masks_unsupported_gap(snapshot_dir):
     }
     section = body["data"][0]
     assert len(section["observation_coordinates"]) == 2
-    assert section["masked_gaps"] == [{"left_profile_index": 0, "right_profile_index": 1, "reason": "time_gap"}]
+    assert section["masked_gaps"] == [
+        {"left_profile_index": 0, "right_profile_index": 1, "reason": "time_gap"}
+    ]
     assert all(cell["temperature"] is None for cell in section["section_cells"])
 
 
-def test_text_planning_falls_back_to_explicit_filters_without_azure(monkeypatch, snapshot_dir):
-    for setting in ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT", "OPENAI_API_VERSION"):
+def test_text_planning_falls_back_to_explicit_filters_without_azure(
+    monkeypatch, snapshot_dir
+):
+    for setting in (
+        "AZURE_OPENAI_ENDPOINT",
+        "AZURE_OPENAI_API_KEY",
+        "AZURE_OPENAI_DEPLOYMENT",
+        "OPENAI_API_VERSION",
+    ):
         monkeypatch.delenv(setting, raising=False)
     client = TestClient(create_app(snapshot_dir))
 
-    response = client.post("/v1/query/plan", json={"question": "Find profiles near 10N in March"})
+    response = client.post(
+        "/v1/query/plan", json={"question": "Find profiles near 10N in March"}
+    )
 
     assert response.status_code == 200
     assert response.json() == {
         "plan": None,
         "planner": "explicit",
-        "warnings": ["AI interpretation unavailable—filters still work. Use explicit filters."],
+        "warnings": [
+            "AI interpretation unavailable—filters still work. Use explicit filters."
+        ],
     }
 
 
 def test_text_planning_invalid_model_plan_falls_back_to_explicit_filters(snapshot_dir):
-    client = TestClient(create_app(snapshot_dir, text_planner=AzurePlanner(FakeClient(), "deployment")))
+    client = TestClient(
+        create_app(snapshot_dir, text_planner=AzurePlanner(FakeClient(), "deployment"))
+    )
 
     response = client.post("/v1/query/plan", json={"question": "Find profiles"})
 
@@ -151,7 +175,9 @@ def test_text_planning_invalid_model_plan_falls_back_to_explicit_filters(snapsho
     assert response.json() == {
         "plan": None,
         "planner": "explicit",
-        "warnings": ["AI interpretation unavailable—filters still work. Use explicit filters."],
+        "warnings": [
+            "AI interpretation unavailable—filters still work. Use explicit filters."
+        ],
     }
 
 

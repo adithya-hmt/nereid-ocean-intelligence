@@ -23,6 +23,7 @@ _FIND_SQL = """
     WHERE p.longitude BETWEEN ? AND ?
       AND p.latitude BETWEEN ? AND ?
       AND CAST(p.timestamp AS DATE) BETWEEN ? AND ?
+      AND (l.pressure_adjusted_qc = 1 OR (? AND l.pressure_adjusted_qc = 2))
       AND (l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2))
       AND (l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))
     ORDER BY p.timestamp, l.wmo, l.cycle, l.pressure_dbar
@@ -35,6 +36,7 @@ _PROFILE_SQL = """
     FROM levels AS l
     INNER JOIN profiles AS p USING (wmo, cycle, direction, source_profile_index)
     WHERE l.wmo = ? AND l.cycle = ?
+      AND (l.pressure_adjusted_qc = 1 OR (? AND l.pressure_adjusted_qc = 2))
       AND (l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2))
       AND (l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))
     ORDER BY p.timestamp, l.pressure_dbar
@@ -54,6 +56,7 @@ _ELIGIBLE_COUNT_SQL = """
     WHERE p.longitude BETWEEN ? AND ?
       AND p.latitude BETWEEN ? AND ?
       AND CAST(p.timestamp AS DATE) BETWEEN ? AND ?
+      AND (l.pressure_adjusted_qc = 1 OR (? AND l.pressure_adjusted_qc = 2))
       AND (l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2))
       AND (l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))
 """
@@ -73,6 +76,7 @@ _SELECTED_CANDIDATE_COUNT_SQL = """
 """
 
 _SELECTED_ELIGIBLE_COUNT_SQL = _SELECTED_CANDIDATE_COUNT_SQL + """
+      AND (l.pressure_adjusted_qc = 1 OR (? AND l.pressure_adjusted_qc = 2))
       AND (l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2))
       AND (l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))
 """
@@ -80,7 +84,7 @@ _SELECTED_ELIGIBLE_COUNT_SQL = _SELECTED_CANDIDATE_COUNT_SQL + """
 
 def _qc_values(policy: QcPolicy) -> list[bool]:
     exploratory = policy is QcPolicy.EXPLORATORY
-    return [exploratory, exploratory]
+    return [exploratory, exploratory, exploratory]
 
 
 class ArgoStore:
@@ -101,7 +105,10 @@ class ArgoStore:
     def _rows(self, sql: str, values: list[Any]) -> list[dict[str, Any]]:
         if sql not in {_FIND_SQL, _PROFILE_SQL, _CANDIDATE_COUNT_SQL, _ELIGIBLE_COUNT_SQL, _PROFILE_CANDIDATE_COUNT_SQL, _SELECTED_CANDIDATE_COUNT_SQL, _SELECTED_ELIGIBLE_COUNT_SQL}:
             raise ValueError("query must be a fixed store template")
-        cursor = self.connection.execute(sql, parameters=values)  # nosec B608
+        # `sql` is checked against the module's closed set of literal templates above;
+        # all runtime values are passed separately to DuckDB's bound-parameter API.
+        execute_fixed_template = self.connection.execute
+        cursor = execute_fixed_template(sql, parameters=values)  # nosec B608
         columns = [column[0] for column in cursor.description]
         return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
 
@@ -146,8 +153,7 @@ class ArgoStore:
                 north,
                 plan.start_date,
                 plan.end_date,
-                plan.qc_mode is QcPolicy.EXPLORATORY,
-                plan.qc_mode is QcPolicy.EXPLORATORY,
+                *_qc_values(plan.qc_mode),
             ],
         )
         return int(result[0]["row_count"]) if result else 0

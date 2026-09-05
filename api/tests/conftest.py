@@ -29,7 +29,9 @@ def snapshot_dir(tmp_path: Path) -> Path:
     )
     rows = []
     for wmo, cycle in (("1900001", 7), ("1900002", 8)):
-        for pressure, qc in zip((0, 10, 20, 30, 40, 60), (1, 2, 1, 3, 4, 1), strict=True):
+        for pressure, qc in zip(
+            (0, 10, 20, 30, 40, 60), (1, 2, 1, 3, 4, 1), strict=True
+        ):
             rows.append(
                 {
                     "wmo": wmo,
@@ -37,7 +39,13 @@ def snapshot_dir(tmp_path: Path) -> Path:
                     "direction": "A",
                     "source_profile_index": 0,
                     "vertical_sampling_scheme": "primary",
+                    "pressure_raw": float(pressure),
+                    "pressure_adjusted": float(pressure),
+                    "pressure_best": float(pressure),
                     "pressure_dbar": float(pressure),
+                    "pressure_qc": qc,
+                    "pressure_adjusted_qc": 4 if pressure == 20 else qc,
+                    "pressure_adjusted_error": 0.1,
                     "depth_m": float(pressure),
                     "temperature_raw": 28.0 - pressure / 10,
                     "temperature_adjusted": 27.9 - pressure / 10,
@@ -51,6 +59,8 @@ def snapshot_dir(tmp_path: Path) -> Path:
                     "salinity_qc": qc,
                     "salinity_adjusted_qc": qc,
                     "salinity_adjusted_error": 0.001,
+                    "absolute_salinity": 34.2 + pressure / 100,
+                    "conservative_temperature": 27.8 - pressure / 10,
                     "adjusted_pressure_error": 0.1,
                     "data_mode": "D",
                     "source_sha256": "a" * 64 if wmo == "1900001" else "b" * 64,

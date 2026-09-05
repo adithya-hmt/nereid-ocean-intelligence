@@ -36,6 +36,8 @@ def test_find_profiles_applies_qc_bounds_and_limit(snapshot_dir):
     assert len(research_rows) == 2
     assert {row["temperature_adjusted_qc"] for row in research_rows} == {1}
     assert {row["salinity_adjusted_qc"] for row in research_rows} == {1}
+    assert {row["pressure_adjusted_qc"] for row in research_rows} == {1}
+    assert all(row["pressure_adjusted_qc"] not in {3, 4} for row in exploratory_rows)
     assert {row["temperature_adjusted_qc"] for row in exploratory_rows} == {1, 2}
     assert all(row["temperature_adjusted_qc"] not in {3, 4} for row in exploratory_rows)
     assert all(row["salinity_adjusted_qc"] not in {3, 4} for row in exploratory_rows)
@@ -50,7 +52,9 @@ def test_committed_snapshot_keeps_each_source_representation_separate():
     assert all(row["temperature_adjusted_qc"] not in {3, 4} for row in rows)
 
 
-def test_find_profiles_filters_all_scientific_variables_even_when_unrequested(snapshot_dir):
+def test_find_profiles_filters_all_scientific_variables_even_when_unrequested(
+    snapshot_dir,
+):
     store = ArgoStore(snapshot_dir)
 
     rows = store.find_profiles(_plan(parameters=[]))
@@ -62,9 +66,7 @@ def test_find_profiles_filters_all_scientific_variables_even_when_unrequested(sn
 def test_find_profiles_applies_date_filter_with_matching_bbox(snapshot_dir):
     store = ArgoStore(snapshot_dir)
 
-    rows = store.find_profiles(
-        _plan(start_date="2023-04-01", end_date="2023-04-30")
-    )
+    rows = store.find_profiles(_plan(start_date="2023-04-01", end_date="2023-04-30"))
 
     assert rows == []
 
@@ -75,7 +77,7 @@ def test_selected_candidate_counts_are_bounded_and_ignore_pagination(snapshot_di
     identities = {("1900001", 7, 0)}
 
     assert store.count_selected_candidates(plan, identities) == 6
-    assert store.count_selected_qc_eligible(plan, identities) == 3
+    assert store.count_selected_qc_eligible(plan, identities) == 2
 
 
 def test_get_profile_and_compare_profiles_apply_qc_policy(snapshot_dir):

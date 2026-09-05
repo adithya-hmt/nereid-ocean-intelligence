@@ -111,6 +111,14 @@ class ObservationSeries(BaseModel):
     adjusted_errors: list[float | None]
 
 
+class DerivedObservationSeries(BaseModel):
+    """TEOS-10 values with the adjusted ARGO QC and error that qualified them."""
+
+    values: list[float | None]
+    adjusted_qc: list[int | None]
+    adjusted_errors: list[float | None]
+
+
 class ProfileSeries(BaseModel):
     """A source-faithful profile whose observation arrays share native depth levels."""
 
@@ -121,23 +129,22 @@ class ProfileSeries(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     timestamp: datetime
     data_mode: DataMode
-    conservative_temperature: ObservationSeries
-    absolute_salinity: ObservationSeries
+    conservative_temperature: DerivedObservationSeries
+    absolute_salinity: DerivedObservationSeries
+    pressure_adjusted_qc: list[int | None]
+    pressure_adjusted_errors: list[float | None]
 
     @model_validator(mode="after")
     def require_observation_alignment(self) -> "ProfileSeries":
         level_count = len(self.depth_m)
         for name in ("conservative_temperature", "absolute_salinity"):
             observations = getattr(self, name)
-            for field_name in (
-                "raw_values",
-                "raw_qc",
-                "adjusted_values",
-                "adjusted_qc",
-                "adjusted_errors",
-            ):
+            for field_name in ("values", "adjusted_qc", "adjusted_errors"):
                 if len(getattr(observations, field_name)) != level_count:
                     raise ValueError(f"{name}.{field_name} must align with depth_m")
+        for field_name in ("pressure_adjusted_qc", "pressure_adjusted_errors"):
+            if len(getattr(self, field_name)) != level_count:
+                raise ValueError(f"{field_name} must align with depth_m")
         return self
 
 

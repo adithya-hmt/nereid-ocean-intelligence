@@ -6,12 +6,14 @@ Parquet outputs remain ignored. Prepare a snapshot only from an explicitly selec
 cited GDAC source:
 
 ```bash
-nereid-prepare --netcdf FILE --output data/snapshots/indian-ocean-2023-03 --source-url URL --snapshot-doi DOI
+nereid-prepare --netcdf FILE --source-url URL --fetched-at ISO-8601-TIMESTAMP [--netcdf FILE --source-url URL --fetched-at ISO-8601-TIMESTAMP ...] --output data/snapshots/indian-ocean-2023-03 --snapshot-doi DOI
 ```
 
 The command records the source URL, snapshot DOI, fetch timestamp, and SHA-256 in
-`manifest.jsonl`. The normalized files preserve raw and adjusted observations and
-QC flags; downstream scientific outputs must exclude QC 3 and 4.
+`manifest.jsonl`. The normalized files preserve raw and adjusted pressure, in-situ temperature,
+and Practical Salinity observations, their QC flags, and adjusted errors. They also
+store TEOS-10 Absolute Salinity (g kg⁻¹) and Conservative Temperature (°C), computed
+only from finite adjusted inputs. Downstream scientific outputs must exclude QC 3 and 4.
 
 The committed replay snapshot contains official delayed-mode GDAC profiles WMO
 1902202/cycle 161 and WMO 2902388/cycle 274, with raw NetCDF, immutable source

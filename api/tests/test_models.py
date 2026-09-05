@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from nereid_api.models import ObservationSeries, ProfileSeries, QueryPlan
+from nereid_api.models import DerivedObservationSeries, ProfileSeries, QueryPlan
 
 
 def test_query_plan_rejects_unbounded_request():
@@ -10,12 +10,8 @@ def test_query_plan_rejects_unbounded_request():
 
 
 def test_profile_requires_source_record_arrays_to_align_with_depths():
-    observations = ObservationSeries(
-        raw_values=[10.0, 9.0],
-        raw_qc=[1, 1],
-        adjusted_values=[10.0, 9.0],
-        adjusted_qc=[1, 1],
-        adjusted_errors=[0.1, 0.1],
+    observations = DerivedObservationSeries(
+        values=[10.0, 9.0], adjusted_qc=[1, 1], adjusted_errors=[0.1, 0.1]
     )
     with pytest.raises(ValidationError, match="align with depth_m"):
         ProfileSeries(
@@ -28,6 +24,8 @@ def test_profile_requires_source_record_arrays_to_align_with_depths():
             data_mode="D",
             conservative_temperature=observations,
             absolute_salinity=observations,
+            pressure_adjusted_qc=[1, 1, 1],
+            pressure_adjusted_errors=[0.1, 0.1, 0.1],
         )
 
 
