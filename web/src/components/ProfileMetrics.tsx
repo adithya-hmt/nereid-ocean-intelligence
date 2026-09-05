@@ -22,10 +22,11 @@ function metricsFrom(result: ResultEnvelope): ProfileMetric[] {
 
 export function ProfileMetrics({ result, selections }: { result: ResultEnvelope; selections: ProfileIdentifier[] }) {
   const metrics = metricsFrom(result)
+  const requested = result.query_plan.parameters.length ? result.query_plan.parameters : ['TEMP', 'PSAL', 'PRES']
   if (!selections.length) return null
   return <section className="profile-metrics" aria-labelledby="metrics-heading"><h2 id="metrics-heading">Profile metrics</h2>{selections.map((selection) => {
     const selectedMetrics = metrics.filter((metric) => identity(metric) === identity(selection))
-    return <article key={identity(selection)} aria-label={`Metrics for ${identity(selection)}`}><h3>{selection.wmo} / cycle {selection.cycle} / {selection.direction} / representation {selection.source_profile_index}</h3>{metricIds.filter((metricId) => metricId === 'principal_thermocline' ? result.query_plan.parameters.includes('TEMP') : result.query_plan.parameters.includes('PSAL')).map((metricId) => {
+    return <article key={identity(selection)} aria-label={`Metrics for ${identity(selection)}`}><h3>{selection.wmo} / cycle {selection.cycle} / {selection.direction} / representation {selection.source_profile_index}</h3>{metricIds.filter((metricId) => metricId === 'principal_thermocline' ? requested.includes('TEMP') : requested.includes('PSAL')).map((metricId) => {
       const metric = selectedMetrics.find((item) => item.name === metricId)
       const label = metricLabels[metricId]
       return metric ? <dl key={metricId}><dt>{label}</dt><dd>{metric.value} {metric.units} at {metric.depth_m} m</dd><dt>Vertical uncertainty</dt><dd>±{metric.uncertainty_m} m</dd><dt>Method</dt><dd>{metric.algorithm}</dd><dt>QC</dt><dd>{metric.quality_label}</dd>{Object.entries(metric.parameters).filter(([parameter]) => parameter.includes('error')).map(([parameter, value]) => <Fragment key={parameter}><dt>{parameter}</dt><dd>{String(value)}</dd></Fragment>)}</dl> : <p key={metricId} role="status">Insufficient evidence for {label} for {selection.wmo} / cycle {selection.cycle} / {selection.direction} / representation {selection.source_profile_index}.</p>

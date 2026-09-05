@@ -31,6 +31,15 @@ def test_checked_in_allowed_cases_construct_typed_plans_and_score_nested_directi
     plans = [QueryPlan.model_validate(case["expected"]) for case in allowed]
     assert all(plan.operation != "nearest_floats" or plan.float_count is not None for plan in plans)
     assert all(item.direction == "A" for plan in plans for item in plan.profile_ids)
+    # The natural-language corpus must not expect selectors it did not state.
+    for case, plan in zip(allowed, plans, strict=True):
+        question = case["question"].lower()
+        if plan.operation == "get_profile":
+            assert "direction a" in question or "ascending" in question
+        if plan.operation in {"compare_profiles", "derive_section"}:
+            for profile_id in plan.profile_ids:
+                assert profile_id.wmo in question and str(profile_id.cycle) in question
+                assert "direction a" in question or "ascending" in question
     expected = next(case["expected"] for case in allowed if case["expected"]["operation"] == "compare_profiles")
     plan = QueryPlan.model_validate(expected)
     assert evaluate.matches(plan, expected)

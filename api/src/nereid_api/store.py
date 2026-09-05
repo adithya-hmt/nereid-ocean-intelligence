@@ -36,7 +36,11 @@ AND (NOT ? OR l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc 
 AND (NOT ? OR l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))"""
 _NEAREST_SQL = """WITH eligible AS (
 SELECT l.*, p.latitude, p.longitude, p.timestamp, p.source_url, p.snapshot_doi, p.fetched_at,
-((p.latitude - ?) * (p.latitude - ?) + (p.longitude - ?) * (p.longitude - ?)) AS center_distance
+2 * 6371.0088 * asin(sqrt(least(1.0, greatest(0.0,
+  sin(radians(p.latitude - ?) / 2) * sin(radians(p.latitude - ?) / 2)
+  + cos(radians(?)) * cos(radians(p.latitude))
+  * sin(radians(p.longitude - ?) / 2) * sin(radians(p.longitude - ?) / 2)
+)))) AS center_distance
 FROM levels AS l INNER JOIN profiles AS p USING (wmo, cycle, direction, source_profile_index)
 WHERE p.longitude BETWEEN ? AND ? AND p.latitude BETWEEN ? AND ?
 AND CAST(p.timestamp AS DATE) BETWEEN ? AND ?
@@ -89,7 +93,7 @@ class ArgoStore:
     def nearest_floats(self, plan: QueryPlan) -> list[dict[str, Any]]:
         west, south, east, north = plan.bbox or (0, 0, 0, 0)
         center_lon, center_lat = (west + east) / 2, (south + north) / 2
-        return self._rows(_NEAREST_SQL, [center_lat, center_lat, center_lon, center_lon, *self._geo_values(plan), *_qc_values(plan), plan.float_count])
+        return self._rows(_NEAREST_SQL, [center_lat, center_lat, center_lat, center_lon, center_lon, *self._geo_values(plan), *_qc_values(plan), plan.float_count])
 
     def count_candidates(self, plan: QueryPlan) -> int:
         rows = self._rows(_GEO_COUNT_SQL, self._geo_values(plan))

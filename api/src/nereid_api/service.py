@@ -17,6 +17,7 @@ from nereid_api.models import (
     DataMode,
     DerivedObservationSeries,
     MethodRecord,
+    ProfileIdentifier,
     ProfileSeries,
     Provenance,
     QcPolicy,
@@ -51,6 +52,8 @@ def _mask_unrequested(rows: list[dict[str, Any]], parameters: Sequence[str], pol
             row["temperature_raw"] = None
         if "PSAL" in requested and row["salinity_qc"] not in allowed:
             row["salinity_raw"] = None
+        if "PRES" in requested and row["pressure_qc"] not in allowed:
+            row["pressure_raw"] = None
         if not {row["pressure_adjusted_qc"], row["salinity_adjusted_qc"]} <= allowed:
             row["absolute_salinity"] = None
         if not {row["pressure_adjusted_qc"], row["temperature_adjusted_qc"], row["salinity_adjusted_qc"]} <= allowed:
@@ -102,7 +105,7 @@ def _interpolate(levels: list[dict[str, Any]], depth_m: float, field: str, max_g
             if upper_depth - lower_depth > max_gap_m or upper_index != lower_index + 1:
                 return None, "vertical_gap"
             return float(lower + (upper - lower) * (depth_m - lower_depth) / (upper_depth - lower_depth)), None
-    return None, None
+    return None, "vertical_gap"
 
 
 class InvestigationService:
@@ -132,10 +135,10 @@ class InvestigationService:
         for identity, levels in grouped_rows.items():
             for parameter in requested:
                 available = [float(row[error_fields[parameter]]) for row in levels if row[error_fields[parameter]] is not None and np.isfinite(float(row[error_fields[parameter]])) and float(row[error_fields[parameter]]) >= 0]
-                key = f"{identity[0]}/{identity[1]}/{identity[2]}:{parameter}"
+                key = f"{identity[0]}/{identity[1]}/{identity[2]}/{identity[3]}:{parameter}"
                 error_parameters[key] = {"adjusted_error_available_count": len(available), "adjusted_error_max": max(available) if available else None}
                 if len(available) != len(levels):
-                    warnings.append(f"Adjusted-error metadata is missing or invalid for eligible {parameter} measurements in representation {identity[0]}/{identity[1]}/{identity[2]}.")
+                    warnings.append(f"Adjusted-error metadata is missing or invalid for eligible {parameter} measurements in representation {identity[0]}/{identity[1]}/{identity[2]}/{identity[3]}.")
         if not rows:
             warnings.append("No matching profiles; widen one bounded filter.")
         elif plan.operation in {"find_profiles", "nearest_floats", "get_profile"} and eligible_count > len(rows):
@@ -144,7 +147,7 @@ class InvestigationService:
             warnings.append("Selected representations use multiple vertical sampling schemes.")
         if plan.operation == "nearest_floats":
             selected_count = len({(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) for row in rows})
-            warnings.append("Nearest representations are ordered by squared geographic distance from the bounding-box center.")
+            warnings.append("Nearest representations are ordered by spherical great-circle distance from the bounding-box center.")
             if plan.float_count is not None and selected_count < plan.float_count:
                 warnings.append(f"Only {selected_count} QC-eligible representations were available for requested float_count {plan.float_count}.")
         return ResultEnvelope(query_plan=plan, data=data, chart_spec=[{"profile_metrics": metrics}], provenance=_provenance(rows), qc_summary=QcSummary(retained=len(rows), rejected=max(candidate_count - eligible_count, 0)), methods=[MethodRecord(name="duckdb_parameterized_profile_query", version="1", parameters={"qc_policy": plan.qc_mode, "parameters": plan.parameters or ["TEMP", "PSAL", "PRES"], "row_limit": plan.row_limit, "nearest_order": "bbox_center_distance" if plan.operation == "nearest_floats" else "not_applicable", "float_count": plan.float_count if plan.operation == "nearest_floats" else None, "adjusted_errors": error_parameters})], assumptions=[], warnings=warnings)
@@ -186,10 +189,21 @@ class InvestigationService:
         available = {(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) for row in envelope.data}
         if not requested <= available:
             raise ValueError("export selection is not present in the bounded QC-eligible result")
-        rows = [row for row in envelope.data if (row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) in requested]
+        # Re-read exact selected rows: envelope.data has presentation masking and
+        # may contain evidence from representations the user did not select.
+        selected_rows = self.store.compare_profiles(
+            [
+                ProfileIdentifier(wmo=wmo, cycle=cycle, direction=direction, source_profile_index=index)
+                for wmo, cycle, direction, index in sorted(requested)
+            ],
+            plan,
+        )
         candidate_count = self.store.count_selected_candidates(plan, requested)
         eligible_count = self.store.count_selected_qc_eligible(plan, requested)
-        return envelope.model_copy(update={"data": rows, "provenance": _provenance(rows), "qc_summary": QcSummary(retained=len(rows), rejected=max(candidate_count - eligible_count, 0))})
+        selected_envelope = self._envelope(plan, selected_rows, candidate_count, eligible_count)
+        # The receipt retains the original bounded query rather than turning
+        # selected evidence into an implicit compare query.
+        return selected_envelope.model_copy(update={"query_plan": plan})
 
     def derive_section(self, request: SectionRequest, query_plan: QueryPlan | None = None) -> ResultEnvelope:
         plan = query_plan or QueryPlan(operation="derive_section", profile_ids=request.profile_ids, parameters=["TEMP", "PSAL"], qc_mode=request.qc_mode)

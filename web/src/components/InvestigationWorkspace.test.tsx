@@ -36,6 +36,12 @@ test('links exactly two default representations across plots and metric refusals
   expect(screen.getAllByRole('img', { name: /in-situ Temperature \(degC\) and Practical Salinity \(PSS-78, unitless\)/ })).toHaveLength(2)
 })
 
+test('empty parameters render both canonical metric slots', async () => {
+  render(<InvestigationWorkspace initialResult={{ ...response, query_plan: { ...response.query_plan, parameters: [] } }} />)
+  expect(screen.getByText('Principal thermocline')).toBeDefined()
+  expect(screen.getAllByText(/Strongest salinity gradient/).length).toBeGreaterThan(0)
+})
+
 test('resets selection only after a successful replacement result', async () => {
   mockedExecuteQuery.mockResolvedValueOnce(response).mockResolvedValueOnce({ ...response, data: [row('1900010', 10, 0), row('1900011', 11, 0)] })
   render(<InvestigationWorkspace />)

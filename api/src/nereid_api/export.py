@@ -16,21 +16,38 @@ def _json(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
 
 
-def _numeric(value: object) -> float:
+def _numeric(value: object) -> tuple[int, float]:
+    """Sort finite coordinates before null/non-numeric values without coercion."""
     if not isinstance(value, (int, float, str)):
-        raise TypeError("export level coordinate must be numeric")
-    return float(value)
+        return (1, 0.0)
+    try:
+        return (0, float(value))
+    except ValueError:
+        return (1, 0.0)
 
 
-def _vertical_sort_value(row: dict[str, object]) -> float:
+def _vertical_sort_value(row: dict[str, object]) -> tuple[int, float]:
     """Use masked pressure when present, otherwise the retained depth coordinate."""
     pressure = row.get("pressure_dbar")
-    return _numeric(pressure) if pressure is not None else _numeric(row["depth_m"])
+    return _numeric(pressure) if pressure is not None else _numeric(row.get("depth_m"))
+
+
+def _sort_key(row: dict[str, object]) -> tuple[object, ...]:
+    return (
+        str(row.get("wmo") or ""),
+        _numeric(row.get("cycle")),
+        str(row.get("direction") or ""),
+        _numeric(row.get("source_profile_index")),
+        _numeric(row.get("level_index")),
+        _vertical_sort_value(row),
+        _numeric(row.get("depth_m")),
+        str(row.get("timestamp") or ""),
+    )
 
 
 def build_evidence_zip(envelope: ResultEnvelope, rows: list[dict[str, object]], generated_at: datetime) -> bytes:
     """Build a stable ZIP for selected rows; generation time is supplied by the caller."""
-    ordered = sorted(rows, key=lambda row: (str(row.get("wmo", "")), int(str(row.get("cycle", 0))), str(row.get("timestamp", "")), _vertical_sort_value(row)))
+    ordered = sorted(rows, key=_sort_key)
     fields = sorted({key for row in ordered for key in row})
     csv_buffer = io.StringIO(newline="")
     writer = csv.DictWriter(csv_buffer, fieldnames=fields, extrasaction="ignore")

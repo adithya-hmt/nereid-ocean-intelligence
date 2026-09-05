@@ -91,6 +91,8 @@ def test_azure_planner_uses_typed_parsing_with_only_query_plan_output():
     assert "find_profiles, nearest_floats, get_profile, compare_profiles, derive_section" in call["messages"][0]["content"]
     assert "TEMP, PSAL, PRES" in call["messages"][0]["content"]
     assert "research, exploratory" in call["messages"][0]["content"]
+    assert "get_profile queries must include WMO, cycle, and direction" in call["messages"][0]["content"]
+    assert "each with WMO, cycle, direction, and source_profile_index" in call["messages"][0]["content"]
 
 
 def test_azure_planner_is_absent_without_all_required_configuration(monkeypatch):

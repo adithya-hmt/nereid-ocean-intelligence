@@ -96,6 +96,21 @@ def test_export_sorts_masked_pressure_by_depth_without_coercing_none():
         assert all(row["pressure_dbar"] == "" for row in selected)
 
 
+def test_export_sort_includes_full_identity_and_native_level_index():
+    envelope = ResultEnvelope(query_plan=QueryPlan(operation="get_profile", wmo="1902202", cycle=161, direction="A"), data=[], chart_spec=[], provenance=[], qc_summary=QcSummary(retained=4, rejected=0), methods=[], assumptions=[], warnings=[])
+    rows = [
+        {"wmo": "1902202", "cycle": 161, "direction": "D", "source_profile_index": 0, "level_index": 0, "depth_m": 0},
+        {"wmo": "1902202", "cycle": 161, "direction": "A", "source_profile_index": 1, "level_index": 0, "depth_m": 0},
+        {"wmo": "1902202", "cycle": 161, "direction": "A", "source_profile_index": 0, "level_index": 1, "depth_m": None},
+        {"wmo": "1902202", "cycle": 161, "direction": "A", "source_profile_index": 0, "level_index": 0, "depth_m": 10},
+    ]
+    payload = build_evidence_zip(envelope, rows, datetime(2026, 9, 5, tzinfo=UTC))
+    assert payload == build_evidence_zip(envelope, list(reversed(rows)), datetime(2026, 9, 5, tzinfo=UTC))
+    with ZipFile(io.BytesIO(payload)) as archive:
+        selected = list(csv.DictReader(io.StringIO(archive.read("selection.csv").decode())))
+        assert [(row["direction"], row["source_profile_index"], row["level_index"]) for row in selected] == [("A", "0", "0"), ("A", "0", "1"), ("A", "1", "0"), ("D", "0", "0")]
+
+
 def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
     from nereid_api.main import create_app
 
@@ -154,6 +169,26 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
         },
     )
     assert altered.status_code == 422
+
+
+def test_export_selection_recomputes_receipt_for_exact_multiple_representations(snapshot_dir):
+    from nereid_api.main import create_app
+
+    client = TestClient(create_app(snapshot_dir))
+    plan = {"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP"], "qc_mode": "research"}
+    selections = [
+        {"wmo": "1900001", "cycle": 7, "direction": "A", "source_profile_index": 0},
+        {"wmo": "1900002", "cycle": 8, "direction": "A", "source_profile_index": 0},
+    ]
+    response = client.post("/v1/export", json={"plan": plan, "selections": selections})
+    assert response.status_code == 200
+    with ZipFile(io.BytesIO(response.content)) as archive:
+        selected = list(csv.DictReader(io.StringIO(archive.read("selection.csv").decode())))
+        methods = json.loads(archive.read("methods.json"))
+        assert {(row["wmo"], row["source_profile_index"]) for row in selected} == {("1900001", "0"), ("1900002", "0")}
+        errors = methods["methods"][0]["parameters"]["adjusted_errors"]
+        assert set(errors) == {"1900001/7/A/0:TEMP", "1900002/8/A/0:TEMP"}
+        assert methods["qc_summary"] == {"retained": 4, "rejected": 8}
 
 
 def test_export_endpoint_accepts_a_valid_get_profile_plan(snapshot_dir):

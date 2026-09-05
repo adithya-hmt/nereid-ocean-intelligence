@@ -86,6 +86,20 @@ def test_find_profiles_applies_date_filter_with_matching_bbox(snapshot_dir):
     assert rows == []
 
 
+def test_nearest_floats_uses_spherical_distance_at_high_latitude(snapshot_dir):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    profiles_path = snapshot_dir / "profiles.parquet"
+    profiles = pq.read_table(profiles_path).to_pylist()
+    profiles[0].update({"latitude": 81.0, "longitude": 0.0})
+    profiles[1].update({"latitude": 80.0, "longitude": 2.0})
+    pq.write_table(pa.Table.from_pylist(profiles), profiles_path)
+    rows = ArgoStore(snapshot_dir).nearest_floats(_plan(operation="nearest_floats", bbox=(-3, 78, 3, 82), float_count=1, parameters=["TEMP"]))
+    # At 80N, two longitude degrees are nearer than one latitude degree.
+    assert {row["wmo"] for row in rows} == {profiles[1]["wmo"]}
+
+
 def test_selected_candidate_counts_are_bounded_and_ignore_pagination(snapshot_dir):
     store = ArgoStore(snapshot_dir)
     plan = _plan(row_limit=1)

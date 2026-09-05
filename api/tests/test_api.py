@@ -420,6 +420,53 @@ def test_nearest_fewer_available_is_truthful_and_overflow_refuses_without_partia
     assert overflow.json()["detail"] == "nearest representations exceed row_limit"
 
 
+def test_adjusted_error_keys_distinguish_source_representations(snapshot_dir):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    profiles_path, levels_path = snapshot_dir / "profiles.parquet", snapshot_dir / "levels.parquet"
+    profiles = pq.read_table(profiles_path).to_pylist()
+    levels = pq.read_table(levels_path).to_pylist()
+    duplicate_profile = {**profiles[0], "source_profile_index": 1}
+    duplicate_levels = [{**row, "source_profile_index": 1} for row in levels if row["wmo"] == profiles[0]["wmo"]]
+    pq.write_table(pa.Table.from_pylist([*profiles, duplicate_profile]), profiles_path)
+    pq.write_table(pa.Table.from_pylist([*levels, *duplicate_levels]), levels_path)
+    response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json={"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP"]})
+    errors = response.json()["methods"][0]["parameters"]["adjusted_errors"]
+    assert "1900001/7/A/0:TEMP" in errors
+    assert "1900001/7/A/1:TEMP" in errors
+
+
+def test_requested_raw_pressure_qc_is_quarantined_in_api_and_export(snapshot_dir):
+    import io
+    import zipfile
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    levels = pq.read_table(snapshot_dir / "levels.parquet").to_pylist()
+    levels[0]["pressure_qc"] = 4
+    levels[0]["pressure_adjusted_qc"] = 1
+    pq.write_table(pa.Table.from_pylist(levels), snapshot_dir / "levels.parquet")
+    client = TestClient(create_app(snapshot_dir))
+    plan = {"operation": "get_profile", "wmo": "1900001", "cycle": 7, "direction": "A", "parameters": ["PRES"], "qc_mode": "research"}
+    result = client.post("/v1/query/execute", json=plan)
+    assert result.status_code == 200
+    row = next(row for row in result.json()["data"] if row["level_index"] == 0)
+    assert row["pressure_raw"] is None
+    assert row["pressure_adjusted"] is not None and row["depth_m"] is not None
+    exported = client.post("/v1/export", json={"plan": plan, "selections": [{"wmo": "1900001", "cycle": 7, "direction": "A", "source_profile_index": 0}]})
+    assert exported.status_code == 200
+    exported_rows = list(__import__("csv").DictReader(__import__("io").StringIO(zipfile.ZipFile(io.BytesIO(exported.content)).read("selection.csv").decode())))
+    assert next(row for row in exported_rows if row["level_index"] == "0")["pressure_raw"] == ""
+
+
+def test_interpolation_marks_outside_vertical_support_as_gap():
+    from nereid_api.service import _interpolate
+
+    assert _interpolate([], 0, "conservative_temperature", 20) == (None, "vertical_gap")
+    assert _interpolate([{"depth_m": 10, "level_index": 0, "conservative_temperature": 1.0}], 0, "conservative_temperature", 20) == (None, "vertical_gap")
+
+
 def test_raw_qc_mismatch_is_quarantined_in_api_and_export(snapshot_dir):
     import io
     import zipfile
