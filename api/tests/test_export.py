@@ -2,7 +2,11 @@
 import csv
 import io
 import json
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from zipfile import ZipFile
 
 import pyarrow as pa
@@ -81,6 +85,51 @@ def test_export_is_deterministic_and_source_faithful():
         assert methods["qc_summary"] == {"retained": 2, "rejected": 1}
         assert methods["methods"][0]["parameters"]["units"] == "dbar"
         assert "selected derivative" in archive.read("README.txt").decode()
+
+
+def test_export_warning_order_is_hash_seed_independent():
+    script = """
+from datetime import UTC, datetime
+from nereid_api.export import build_evidence_zip
+from nereid_api.models import QueryPlan
+from nereid_api.service import InvestigationService
+
+row = {
+    "wmo": "1900001", "cycle": 7, "direction": "A", "source_profile_index": 0,
+    "vertical_sampling_scheme": "primary", "level_index": 0,
+    "pressure_raw": 0.0, "pressure_adjusted": 0.0, "pressure_best": 0.0,
+    "pressure_dbar": 0.0, "pressure_qc": 1, "pressure_adjusted_qc": 1,
+    "pressure_adjusted_error": None, "adjusted_pressure_error": None, "depth_m": 0.0,
+    "temperature_raw": 20.0, "temperature_adjusted": 20.0, "temperature_best": 20.0,
+    "temperature_qc": 1, "temperature_adjusted_qc": 1,
+    "temperature_adjusted_error": None, "conservative_temperature": 20.0,
+    "salinity_raw": 35.0, "salinity_adjusted": 35.0, "salinity_best": 35.0,
+    "salinity_qc": 1, "salinity_adjusted_qc": 1,
+    "salinity_adjusted_error": None, "absolute_salinity": 35.0,
+    "latitude": 10.0, "longitude": 70.0, "timestamp": datetime(2023, 3, 15, tzinfo=UTC),
+    "data_mode": "D", "source_url": "https://example.test/a.nc",
+    "snapshot_doi": "10.1234/nereid", "fetched_at": datetime(2023, 3, 26, tzinfo=UTC),
+    "source_sha256": "a" * 64,
+}
+plan = QueryPlan(operation="get_profile", wmo="1900001", cycle=7, direction="A", parameters=["PSAL", "TEMP", "PRES"])
+envelope = InvestigationService(None)._envelope(plan, [row], 1, 1)
+assert [warning.split(" eligible ")[1].split()[0] for warning in envelope.warnings] == ["PRES", "TEMP", "PSAL"]
+assert list(envelope.methods[0].parameters["adjusted_errors"]) == [
+    "1900001/7/A/0:PRES", "1900001/7/A/0:TEMP", "1900001/7/A/0:PSAL",
+]
+import sys
+sys.stdout.buffer.write(build_evidence_zip(envelope, envelope.data, datetime(2026, 9, 5, tzinfo=UTC)))
+"""
+    api_dir = Path(__file__).resolve().parents[1]
+
+    def export_for_hash_seed(seed: str) -> bytes:
+        environment = os.environ | {"PYTHONHASHSEED": seed, "PYTHONPATH": str(api_dir / "src")}
+        return subprocess.run(
+            [sys.executable, "-c", script], cwd=api_dir, env=environment,
+            check=True, capture_output=True,
+        ).stdout
+
+    assert export_for_hash_seed("1") == export_for_hash_seed("2")
 
 
 def test_export_sorts_masked_pressure_by_depth_without_coercing_none():

@@ -162,7 +162,9 @@ class InvestigationService:
         for row in rows:
             grouped_rows[(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"])].append(row)
         for identity, levels in grouped_rows.items():
-            for parameter in requested:
+            for parameter in ("PRES", "TEMP", "PSAL"):
+                if parameter not in requested:
+                    continue
                 available = [float(row[error_fields[parameter]]) for row in levels if row[error_fields[parameter]] is not None and np.isfinite(float(row[error_fields[parameter]])) and float(row[error_fields[parameter]]) >= 0]
                 key = f"{identity[0]}/{identity[1]}/{identity[2]}/{identity[3]}:{parameter}"
                 error_parameters[key] = {"adjusted_error_available_count": len(available), "adjusted_error_max": max(available) if available else None}
