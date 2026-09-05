@@ -16,6 +16,10 @@ class PlannerUnavailable(Exception):
     """Raised when the optional text planner cannot safely produce a plan."""
 
 
+class PlannerRejected(Exception):
+    """Raised for an explicit model refusal or locally rejected model plan."""
+
+
 class ExplicitPlanner:
     """Preserve user-supplied, already validated filter controls."""
 
@@ -59,13 +63,11 @@ class AzurePlanner:
         message = completion.choices[0].message if completion.choices else None
         parsed = message.parsed if message else None
         if message is None or message.refusal or parsed is None:
-            raise PlannerUnavailable("AI interpretation is unavailable; use explicit filters.")
+            raise PlannerRejected("AI interpretation unavailable—filters still work. Use explicit filters.")
         try:
             return QueryPlan.model_validate(parsed)
         except ValidationError as error:
-            raise PlannerUnavailable(
-                "AI interpretation unavailable—filters still work. Use explicit filters."
-            ) from error
+            raise PlannerRejected("AI interpretation unavailable—filters still work. Use explicit filters.") from error
 
 
 def azure_planner_from_environment() -> AzurePlanner | None:

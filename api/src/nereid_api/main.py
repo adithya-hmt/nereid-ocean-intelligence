@@ -16,6 +16,7 @@ from nereid_api.export import build_evidence_zip
 from nereid_api.models import QcPolicy, QueryPlan, ResultEnvelope, SectionRequest
 from nereid_api.planner import (
     AzurePlanner,
+    PlannerRejected,
     PlannerUnavailable,
     azure_planner_from_environment,
 )
@@ -81,7 +82,7 @@ def create_app(
             )
         try:
             return PlanResponse(plan=await planner.plan(request.question), planner="azure", warnings=[])
-        except PlannerUnavailable as error:
+        except (PlannerUnavailable, PlannerRejected) as error:
             return PlanResponse(plan=None, planner="explicit", warnings=[str(error)])
 
     @app.post("/v1/query/execute", response_model=ResultEnvelope)
@@ -108,7 +109,7 @@ def create_app(
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         return Response(
-            build_evidence_zip(envelope, envelope.data, datetime(1980, 1, 1, tzinfo=timezone.utc)),
+            build_evidence_zip(envelope, envelope.data, datetime.now(timezone.utc)),
             media_type="application/zip",
             headers={"Content-Disposition": "attachment; filename=nereid-evidence.zip"},
         )

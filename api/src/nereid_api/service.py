@@ -197,28 +197,25 @@ class InvestigationService:
         ]
         cells: list[dict[str, Any]] = []
         masked_gaps: list[dict[str, Any]] = []
-        for index, (left, right) in enumerate(pairwise(profiles)):
-            left_point, right_point = coordinates[index], coordinates[index + 1]
-            elapsed_hours = abs(
-                (datetime.fromisoformat(right_point["timestamp"]) - datetime.fromisoformat(left_point["timestamp"])).total_seconds()
-            ) / 3600
-            reason = None
-            if elapsed_hours > request.max_time_gap_hours:
-                reason = "time_gap"
-            elif _distance_km(left_point, right_point) > request.max_distance_km:
-                reason = "distance_gap"
-            if reason:
-                masked_gaps.append({"left_profile_index": index, "right_profile_index": index + 1, "reason": reason})
-            deepest = min(max(row["depth_m"] for row in left), max(row["depth_m"] for row in right))
-            for depth_m in np.arange(0, deepest + request.depth_step_m, request.depth_step_m):
-                left_temperature = _interpolate(left, depth_m, "temperature_adjusted")
-                right_temperature = _interpolate(right, depth_m, "temperature_adjusted")
-                left_salinity = _interpolate(left, depth_m, "salinity_adjusted")
-                right_salinity = _interpolate(right, depth_m, "salinity_adjusted")
-                cells.append(
-                    {
-                        "left_profile_index": index,
-                        "right_profile_index": index + 1,
+        lanes: dict[int, list[tuple[int, list[dict[str, Any]]]]] = defaultdict(list)
+        for index, levels in enumerate(profiles):
+            lanes[levels[0]["source_profile_index"]].append((index, levels))
+        for lane in lanes.values():
+            for (left_index, left), (right_index, right) in pairwise(lane):
+                left_point, right_point = coordinates[left_index], coordinates[right_index]
+                elapsed_hours = abs((datetime.fromisoformat(right_point["timestamp"]) - datetime.fromisoformat(left_point["timestamp"])).total_seconds()) / 3600
+                reason = "time_gap" if elapsed_hours > request.max_time_gap_hours else "distance_gap" if _distance_km(left_point, right_point) > request.max_distance_km else None
+                if reason:
+                    masked_gaps.append({"left_profile_index": left_index, "right_profile_index": right_index, "reason": reason})
+                deepest = min(max(row["depth_m"] for row in left), max(row["depth_m"] for row in right))
+                for depth_m in np.arange(0, deepest + request.depth_step_m, request.depth_step_m):
+                    left_temperature = _interpolate(left, depth_m, "temperature_adjusted")
+                    right_temperature = _interpolate(right, depth_m, "temperature_adjusted")
+                    left_salinity = _interpolate(left, depth_m, "salinity_adjusted")
+                    right_salinity = _interpolate(right, depth_m, "salinity_adjusted")
+                    cells.append({
+                        "left_profile_index": left_index,
+                        "right_profile_index": right_index,
                         "depth_m": float(depth_m),
                         "temperature": None
                         if reason or left_temperature is None or right_temperature is None

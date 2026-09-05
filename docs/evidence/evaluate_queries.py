@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from nereid_api.models import QueryPlan
-from nereid_api.planner import azure_planner_from_environment
+from nereid_api.planner import (
+    PlannerRejected,
+    PlannerUnavailable,
+    azure_planner_from_environment,
+)
 
 
 class Planner(Protocol):
@@ -24,8 +28,10 @@ async def score(planner: Planner, cases: list[dict[str, object]]) -> tuple[int, 
         try:
             plan = await planner.plan(str(case["question"]))
             correct += expected != "rejection" and matches(plan, cast(dict[str, object], expected))
-        except Exception:
+        except PlannerRejected:
             correct += expected == "rejection"
+        except PlannerUnavailable:
+            raise
     return correct, len(cases)
 
 async def main() -> int:
