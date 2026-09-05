@@ -147,8 +147,11 @@ class InvestigationService:
             raise ValueError(f"insufficient or missing requested representation: {names}")
 
     def _envelope(self, plan: QueryPlan, rows: list[dict[str, Any]], candidate_count: int, eligible_count: int) -> ResultEnvelope:
+        # find/get apply a level-row limit. A partial profile cannot support a
+        # profile-level metric, even when the returned prefix happens to do so.
+        level_rows_truncated = plan.operation in {"find_profiles", "get_profile"} and eligible_count > len(rows)
         scientific_rows = _mask_unrequested([row.copy() for row in rows], _METRIC_DEPENDENCY_PARAMETERS, plan.qc_mode)
-        metrics = _profile_metrics(scientific_rows, plan.qc_mode, plan.parameters) if scientific_rows else []
+        metrics = _profile_metrics(scientific_rows, plan.qc_mode, plan.parameters) if scientific_rows and not level_rows_truncated else []
         rows = _mask_unrequested(rows, plan.parameters, plan.qc_mode)
         data = [{key: _json_value(value) for key, value in row.items()} for row in rows]
         requested = set(plan.parameters) or {"TEMP", "PSAL", "PRES"}

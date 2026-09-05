@@ -34,3 +34,15 @@ test('renders method units as accessible receipt evidence', () => {
   expect(screen.getByText('salinity units')).toBeDefined()
   expect(screen.getByText('g kg-1')).toBeDefined()
 })
+
+test('read-only section receipt exposes exact identities and request controls without export controls', () => {
+  const section = { ...result('1900002', 8, 1), section_request: { profile_ids: [{ wmo: '1900002', cycle: 8, direction: 'A' as const, source_profile_index: 1 }, { wmo: '1900003', cycle: 9, direction: 'D' as const, source_profile_index: 0 }], qc_mode: 'research' as const, parameters: ['TEMP' as const], row_limit: 77, depth_step_m: 11, max_time_gap_hours: 22, max_distance_km: 33, max_vertical_gap_m: 44 } }
+  render(<ScientificReceipt result={section} selections={[]} onSelectionChange={() => undefined} readOnly heading="Derived section receipt" headingId="derived-section-receipt-heading" />)
+  expect(screen.getByRole('heading', { name: 'Derived section receipt' }).id).toBe('derived-section-receipt-heading')
+  expect(screen.getByText(/1900002 \/ cycle 8 \/ A \/ representation 1/)).toBeDefined()
+  expect(screen.getByText(/1900003 \/ cycle 9 \/ D \/ representation 0/)).toBeDefined()
+  expect(screen.getByText('depth_step_m')).toBeDefined()
+  expect(screen.getByText('11')).toBeDefined()
+  expect(screen.queryByRole('button', { name: 'Download evidence ZIP' })).toBeNull()
+  expect(screen.queryByRole('checkbox')).toBeNull()
+})

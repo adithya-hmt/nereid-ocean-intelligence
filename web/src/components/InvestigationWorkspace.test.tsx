@@ -16,7 +16,7 @@ const response: ResultEnvelope = {
   provenance: [{ source_url: 'https://example.test/a.nc', snapshot_doi: '10.1234/nereid', fetched_at: '2023-03-26T00:00:00Z', sha256: 'a'.repeat(64) }], qc_summary: { retained: 3, rejected: 2 }, methods: [{ name: 'duckdb_parameterized_profile_query', version: '1', parameters: {} }], assumptions: [], warnings: [], answer: null,
 }
 const coordinate = (wmo: string, cycle: number, source_profile_index: number, vertical_sampling_scheme: string, latitude: number, longitude: number, timestamp: string) => ({ wmo, cycle, direction: 'A' as const, source_profile_index, vertical_sampling_scheme, latitude, longitude, timestamp })
-const section: ResultEnvelope = { ...response, data: [{ observation_coordinates: [coordinate('1900001', 7, 0, 'primary', 10, 70, '2023-03-15T00:00:00Z'), coordinate('1900002', 8, 0, 'primary', 11, 71, '2023-03-16T00:00:00Z')], section_cells: [{ left_profile_index: 0, right_profile_index: 1, depth_m: 10, temperature: null, salinity: null }], masked_gaps: [{ left_profile_index: 0, right_profile_index: 1, reason: 'time_gap' }] }], chart_spec: [] }
+const section: ResultEnvelope = { ...response, section_request: { profile_ids: [{ wmo: '1900001', cycle: 7, direction: 'A', source_profile_index: 0 }, { wmo: '1900002', cycle: 8, direction: 'A', source_profile_index: 0 }], qc_mode: 'research', parameters: ['TEMP', 'PSAL'], row_limit: 10000, depth_step_m: 10, max_time_gap_hours: 168, max_distance_km: 500, max_vertical_gap_m: 100 }, data: [{ observation_coordinates: [coordinate('1900001', 7, 0, 'primary', 10, 70, '2023-03-15T00:00:00Z'), coordinate('1900002', 8, 0, 'primary', 11, 71, '2023-03-16T00:00:00Z')], section_cells: [{ left_profile_index: 0, right_profile_index: 1, depth_m: 10, temperature: null, salinity: null }], masked_gaps: [{ left_profile_index: 0, right_profile_index: 1, reason: 'time_gap' }] }], chart_spec: [] }
 const mockedExecuteQuery = vi.mocked(executeQuery)
 const mockedInterpretQuestion = vi.mocked(interpretQuestion)
 const mockedDeriveSection = vi.mocked(deriveSection)
@@ -57,6 +57,8 @@ test('derives a section with the same exact selected IDs and retains prior data 
   render(<InvestigationWorkspace initialResult={response} />)
   fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
   await screen.findByRole('table', { name: 'Cross-section observations' })
+  expect(screen.getByRole('heading', { name: 'Derived section receipt' })).toBeDefined()
+  expect(screen.getAllByRole('heading', { name: 'Scientific receipt' })).toHaveLength(1)
   expect(mockedDeriveSection).toHaveBeenCalledWith(expect.objectContaining({ profile_ids: [{ wmo: '1900001', cycle: 7, direction: 'A', source_profile_index: 0 }, { wmo: '1900002', cycle: 8, direction: 'A', source_profile_index: 0 }] }), expect.anything())
   fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
   await screen.findByRole('alert')
@@ -74,6 +76,29 @@ test('selection changes abort and invalidate an in-flight section', async () => 
   expect(signal.aborted).toBe(true)
   resolveSection(section)
   await waitFor(() => expect(screen.queryByRole('table', { name: 'Cross-section observations' })).toBeNull())
+})
+
+test('a section control change aborts a pending derivation and stale resolution cannot render', async () => {
+  let resolveSection: (value: typeof section) => void = () => undefined
+  mockedDeriveSection.mockImplementationOnce(() => new Promise((resolve) => { resolveSection = resolve }))
+  render(<InvestigationWorkspace initialResult={response} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
+  await waitFor(() => expect(mockedDeriveSection).toHaveBeenCalledTimes(1))
+  const signal = mockedDeriveSection.mock.calls[0][1]!
+  fireEvent.change(screen.getByLabelText('Depth step (m)'), { target: { value: '11' } })
+  expect(signal.aborted).toBe(true)
+  resolveSection(section)
+  await waitFor(() => expect(screen.queryByRole('table', { name: 'Cross-section observations' })).toBeNull())
+})
+
+test('a section control change immediately removes an existing section and receipt', async () => {
+  mockedDeriveSection.mockResolvedValue(section)
+  render(<InvestigationWorkspace initialResult={response} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
+  await screen.findByRole('table', { name: 'Cross-section observations' })
+  fireEvent.change(screen.getByLabelText('Maximum distance (km)'), { target: { value: '501' } })
+  expect(screen.queryByRole('table', { name: 'Cross-section observations' })).toBeNull()
+  expect(screen.queryByRole('heading', { name: 'Derived section receipt' })).toBeNull()
 })
 
 test('a replacement query invalidates an older section response', async () => {

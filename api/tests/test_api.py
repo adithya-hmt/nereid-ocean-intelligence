@@ -336,6 +336,10 @@ def test_temp_and_salinity_metrics_keep_internal_pressure_dependencies_masked(sn
     pressure_fields = ("pressure_raw", "pressure_adjusted", "pressure_best", "pressure_dbar", "pressure_qc", "pressure_adjusted_qc", "pressure_adjusted_error", "adjusted_pressure_error")
     assert all(row[field] is None for row in body["data"] for field in pressure_fields)
 
+    truncated = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json={**payload, "row_limit": 3}).json()
+    assert truncated["warnings"] == ["Results truncated to the requested row limit."]
+    assert truncated["chart_spec"] == [{"profile_metrics": []}]
+
 
 def test_bad_pressure_raw_fallback_is_excluded_from_metric_input(snapshot_dir):
     import pyarrow as pa
