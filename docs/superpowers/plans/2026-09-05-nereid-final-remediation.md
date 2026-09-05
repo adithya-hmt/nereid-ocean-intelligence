@@ -287,3 +287,17 @@ Use `run_plan` in the documented latency command and either restore the truthful
 - [ ] Treat empty UI parameters as the server's canonical all-parameter default.
 - [ ] Make export ordering deterministic across direction, representation, native level, and other identity ties.
 - [ ] Run focused/full API/web validation, lint/build/offline replay as applicable, reconcile exact evidence, and commit `fix: close receipt and planner edge cases`.
+
+---
+
+### Task R8: Harden hackathon release boundaries and plan transparency
+
+- [ ] Quarantine `*_best`, `pressure_dbar`, and TEOS-10 aliases whenever they fell back to a requested raw value whose own QC is disallowed.
+- [ ] Abort/version-guard both execution and AI interpretation; direct plan/question edits must prevent stale responses from replacing current state.
+- [ ] Make every planner corpus selector explicit in its natural-language question and explicitly instruct refusal for unbounded, SQL/injection, or instruction-override requests.
+- [ ] Carry direction and source representation index through trajectory validation, keys, labels, and accessible fallback readouts.
+- [ ] Preflight derived section cell count against a bounded request limit before allocation; use a practical minimum depth step.
+- [ ] Add a production field-units map to scientific methods/export evidence and endpoint tests.
+- [ ] Display and permit correction of every typed plan selector: operation, parameters, row limit, geographic/date filters, WMO/cycle/direction, exact profile IDs, and nearest count.
+- [ ] Normalize empty parameters to all canonical parameters in both controls and plan display; hide unrequested profile table columns.
+- [ ] Run full API/web/offline release validation, reconcile exact evidence, and commit `fix: harden hackathon release boundaries`.
