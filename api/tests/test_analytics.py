@@ -1,13 +1,39 @@
-from nereid_api.analytics import principal_thermocline, strongest_salinity_gradient
+from datetime import datetime, timezone
 
+from nereid_api.analytics import principal_thermocline, strongest_salinity_gradient
+from nereid_api.models import ObservationSeries, ProfileSeries, QcPolicy
 
 DEPTHS = [0, 10, 20, 30, 40, 60, 100]
 CONSERVATIVE_TEMPERATURE = [28, 27.8, 27.5, 24, 20, 18, 15]
 ABSOLUTE_SALINITY = [34, 34.1, 34.2, 34.6, 35.2, 35.3, 35.4]
 
 
+def _observations(values, qc=1):
+    return ObservationSeries(
+        raw_values=values,
+        raw_qc=[qc] * len(values),
+        adjusted_values=values,
+        adjusted_qc=[qc] * len(values),
+        adjusted_errors=[0.01] * len(values),
+    )
+
+
+def _profile(temperature_qc=1, salinity_qc=1):
+    return ProfileSeries(
+        wmo="1234567",
+        cycle=1,
+        depth_m=DEPTHS,
+        latitude=10,
+        longitude=20,
+        timestamp=datetime(2023, 3, 1, tzinfo=timezone.utc),
+        data_mode="D",
+        conservative_temperature=_observations(CONSERVATIVE_TEMPERATURE, temperature_qc),
+        absolute_salinity=_observations(ABSOLUTE_SALINITY, salinity_qc),
+    )
+
+
 def test_principal_thermocline_reference_cast():
-    metric = principal_thermocline(DEPTHS, CONSERVATIVE_TEMPERATURE)
+    metric = principal_thermocline(_profile(), QcPolicy.RESEARCH)
 
     assert metric is not None
     assert abs(metric.depth_m - 30) <= 10
@@ -16,7 +42,7 @@ def test_principal_thermocline_reference_cast():
 
 
 def test_strongest_salinity_gradient_reference_cast():
-    metric = strongest_salinity_gradient(DEPTHS, ABSOLUTE_SALINITY)
+    metric = strongest_salinity_gradient(_profile(), QcPolicy.RESEARCH)
 
     assert metric is not None
     assert abs(metric.depth_m - 40) <= 10
@@ -24,6 +50,46 @@ def test_strongest_salinity_gradient_reference_cast():
     assert metric.uncertainty_m > 0
 
 
-def test_analytics_reject_insufficient_valid_levels():
-    assert principal_thermocline([0, 20, 60], [28, 25, 20]) is None
-    assert strongest_salinity_gradient([0, 20, 60], [34, 34.5, 35]) is None
+def test_research_uses_adjusted_qc_one_and_excludes_qc_two():
+    profile = _profile(temperature_qc=2, salinity_qc=2)
+
+    assert principal_thermocline(profile, QcPolicy.RESEARCH) is None
+    assert strongest_salinity_gradient(profile, QcPolicy.RESEARCH) is None
+
+
+def test_qc_three_and_four_are_excluded_in_every_policy():
+    profile = _profile(temperature_qc=3, salinity_qc=4)
+
+    assert principal_thermocline(profile, QcPolicy.EXPLORATORY) is None
+    assert strongest_salinity_gradient(profile, QcPolicy.EXPLORATORY) is None
+
+
+def test_research_uses_adjusted_values_not_raw_values():
+    profile = _profile()
+    profile.conservative_temperature.raw_values = [100, 0, 100, 0, 100, 0, 100]
+
+    metric = principal_thermocline(profile, QcPolicy.RESEARCH)
+
+    assert metric is not None
+    assert abs(metric.depth_m - 30) <= 10
+
+
+def test_exploratory_includes_qc_two_with_visible_label():
+    profile = _profile(temperature_qc=2, salinity_qc=2)
+
+    thermocline = principal_thermocline(profile, QcPolicy.EXPLORATORY)
+    salinity_gradient = strongest_salinity_gradient(profile, QcPolicy.EXPLORATORY)
+
+    assert thermocline is not None
+    assert salinity_gradient is not None
+    assert thermocline.quality_label == "Exploratory: adjusted observations with adjusted QC=1 or 2"
+    assert salinity_gradient.quality_label == "Exploratory: adjusted observations with adjusted QC=1 or 2"
+
+
+def test_analytics_reject_insufficient_qc_filtered_levels():
+    profile = _profile()
+    profile.conservative_temperature.adjusted_qc[-1] = 3
+    profile.conservative_temperature.adjusted_qc[-2] = 3
+    profile.conservative_temperature.adjusted_qc[-3] = 3
+
+    assert principal_thermocline(profile, QcPolicy.RESEARCH) is None

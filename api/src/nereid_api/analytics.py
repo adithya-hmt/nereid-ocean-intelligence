@@ -1,13 +1,30 @@
-"""Deterministic profile metrics calculated from native observation levels."""
+"""Deterministic QC-filtered profile metrics calculated from native observation levels."""
 
 from collections.abc import Sequence
 
 import numpy as np
 
-from nereid_api.models import DerivedMetric
+from nereid_api.models import DerivedMetric, ObservationSeries, ProfileSeries, QcPolicy
 
 _MINIMUM_LEVELS = 4
 _MINIMUM_VERTICAL_SPAN_M = 50.0
+_RESEARCH_LABEL = "Research: adjusted observations with adjusted QC=1"
+_EXPLORATORY_LABEL = "Exploratory: adjusted observations with adjusted QC=1 or 2"
+
+
+def _policy_levels(
+    profile: ProfileSeries, observations: ObservationSeries, policy: QcPolicy
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Select adjusted observations allowed by the requested QC policy.
+
+    Research results use only adjusted QC=1 values. Exploratory results may also use
+    adjusted QC=2 values and are visibly labelled by the returned metric.
+    """
+    allowed_qc = {1} if policy is QcPolicy.RESEARCH else {1, 2}
+    values = np.asarray(observations.adjusted_values, dtype=float)
+    flags = np.asarray(observations.adjusted_qc, dtype=object)
+    allowed = np.fromiter((flag in allowed_qc for flag in flags), dtype=bool)
+    return _valid_sorted_levels(np.asarray(profile.depth_m)[allowed], values[allowed])
 
 
 def _valid_sorted_levels(
@@ -40,11 +57,15 @@ def _uncertainty(depths: np.ndarray, index: int) -> float:
     return max(adjacent_spacings) / 2
 
 
+def _quality_label(policy: QcPolicy) -> str:
+    return _RESEARCH_LABEL if policy is QcPolicy.RESEARCH else _EXPLORATORY_LABEL
+
+
 def principal_thermocline(
-    depth_m: Sequence[float], conservative_temperature: Sequence[float]
+    profile: ProfileSeries, policy: QcPolicy
 ) -> DerivedMetric | None:
-    """Find the strongest native negative Conservative Temperature gradient at 10–500 m."""
-    levels = _valid_sorted_levels(depth_m, conservative_temperature)
+    """Find the strongest negative adjusted-temperature gradient allowed by QC policy."""
+    levels = _policy_levels(profile, profile.conservative_temperature, policy)
     if levels is None:
         return None
     depths, temperatures = levels
@@ -66,15 +87,17 @@ def principal_thermocline(
             "depth_range_m": [10, 500],
             "minimum_unique_levels": _MINIMUM_LEVELS,
             "minimum_vertical_span_m": _MINIMUM_VERTICAL_SPAN_M,
+            "qc_policy": policy,
         },
+        quality_label=_quality_label(policy),
     )
 
 
 def strongest_salinity_gradient(
-    depth_m: Sequence[float], absolute_salinity: Sequence[float]
+    profile: ProfileSeries, policy: QcPolicy
 ) -> DerivedMetric | None:
-    """Find the largest-magnitude native Absolute Salinity gradient and preserve its sign."""
-    levels = _valid_sorted_levels(depth_m, absolute_salinity)
+    """Find the largest adjusted-salinity gradient allowed by the QC policy."""
+    levels = _policy_levels(profile, profile.absolute_salinity, policy)
     if levels is None:
         return None
     depths, salinities = levels
@@ -92,5 +115,7 @@ def strongest_salinity_gradient(
             "gradient": "numpy.gradient",
             "minimum_unique_levels": _MINIMUM_LEVELS,
             "minimum_vertical_span_m": _MINIMUM_VERTICAL_SPAN_M,
+            "qc_policy": policy,
         },
+        quality_label=_quality_label(policy),
     )

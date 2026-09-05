@@ -81,12 +81,52 @@ class MethodRecord(BaseModel):
     parameters: dict[str, JsonValue]
 
 
+class DataMode(StrEnum):
+    """ARGO profile processing state retained with every scientific input."""
+
+    REAL_TIME = "R"
+    DELAYED = "D"
+    ADJUSTED_REAL_TIME = "A"
+
+
+class ObservationSeries(BaseModel):
+    """Raw and adjusted values plus their per-level ARGO quality metadata."""
+
+    raw_values: list[float | None]
+    raw_qc: list[int | None]
+    adjusted_values: list[float | None]
+    adjusted_qc: list[int | None]
+    adjusted_errors: list[float | None]
+
+
 class ProfileSeries(BaseModel):
+    """A source-faithful profile whose observation arrays share native depth levels."""
+
     wmo: str
     cycle: int = Field(ge=0)
     depth_m: list[float]
-    conservative_temperature: list[float] | None = None
-    absolute_salinity: list[float] | None = None
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    timestamp: datetime
+    data_mode: DataMode
+    conservative_temperature: ObservationSeries
+    absolute_salinity: ObservationSeries
+
+    @model_validator(mode="after")
+    def require_observation_alignment(self) -> "ProfileSeries":
+        level_count = len(self.depth_m)
+        for name in ("conservative_temperature", "absolute_salinity"):
+            observations = getattr(self, name)
+            for field_name in (
+                "raw_values",
+                "raw_qc",
+                "adjusted_values",
+                "adjusted_qc",
+                "adjusted_errors",
+            ):
+                if len(getattr(observations, field_name)) != level_count:
+                    raise ValueError(f"{name}.{field_name} must align with depth_m")
+        return self
 
 
 class DerivedMetric(BaseModel):
@@ -97,6 +137,7 @@ class DerivedMetric(BaseModel):
     uncertainty_m: float = Field(gt=0)
     algorithm: str
     parameters: dict[str, JsonValue]
+    quality_label: str
 
 
 class ResultEnvelope(BaseModel):
