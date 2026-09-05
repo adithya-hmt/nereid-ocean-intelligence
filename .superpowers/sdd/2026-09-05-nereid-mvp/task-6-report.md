@@ -49,3 +49,23 @@ The Playwright configuration used `127.0.0.1` while Next dev identified itself a
 - Mitigation: visible point size was reduced from `0.012` to `0.003`. The truthful post-mitigation value remains below the design target, so it is not represented as meeting 30 FPS.
 - Green: `pnpm --dir web exec playwright test e2e/rendering.spec.ts` passes and generated `docs/evidence/rendering.json` from the live benchmark panel: initialization `1.3 ms`, actual R3F FPS `10.984`, browser and hardware separately recorded.
 - Commands: `pnpm --dir web test --run`; `pnpm --dir web lint`; `pnpm --dir web build`; `pnpm --dir web exec playwright test e2e/rendering.spec.ts`.
+
+## Fix round 2: actual-frame performance diagnosis
+
+### Instrumentation and root cause
+
+The benchmark now runs two comparable five-second `useFrame` samples under the same Playwright Chromium session: an empty Canvas with no point draw and the 100,000-point cloud. The live benchmark panel and checked-in evidence record vendor/renderer, sample frame interval, probe callback overhead, and scheduled demand invalidations.
+
+The evidence identifies one root cause: **the 100,000-point draw on the software SwiftShader renderer is the bottleneck, not Canvas, R3F frame scheduling, or the probe.** The empty Canvas measured `60.264` actual R3F FPS (`16.594 ms` frame interval), while the point cloud measured `11.269` FPS (`88.737 ms` interval). Both report `ANGLE ... SwiftShader Device (Subzero) ... SwiftShader driver`. Probe work averaged only `0.004 ms` empty and `0.007 ms` with points, and each sample scheduled the expected demand invalidations (301 and 56 respectively). Because empty Canvas is above 30, a GPU-launch configuration would not diagnose this point-rendering gap and was not used to tune the number.
+
+### Optimization and resource proof
+
+The point cloud now creates one capacity-sized `BufferGeometry` and two `DynamicDrawUsage` attributes per source dataset, then updates their existing typed arrays and `drawRange` in place for cutoff/exaggeration changes. The geometry is disposed only when its capacity resource is replaced/unmounted. `point-cloud.test.ts` proves that cutoff updates preserve position/color attribute identity while changing draw range. This is the smallest applicable optimization; remeasurement improved the cloud from `10.984` to `11.269` actual FPS, but cannot reach 30 under SwiftShader.
+
+### Commands
+
+- `pnpm --dir web test --run src/lib/point-cloud.test.ts`
+- `pnpm --dir web exec playwright test e2e/rendering.spec.ts`
+- `pnpm --dir web test --run`
+- `pnpm --dir web lint`
+- `pnpm --dir web build`

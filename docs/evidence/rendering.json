@@ -1,15 +1,28 @@
 {
   "label": "benchmark only — synthetic rows are never scientific results",
-  "points": 100000,
   "declared": {
     "browser": "chromium",
-    "hardware": "Playwright benchmark runner; browser-reported capabilities are displayed separately as measured hardware."
+    "hardware": "Playwright benchmark runner; browser-reported capabilities are recorded separately as measured hardware."
   },
   "measured": {
-    "initializationMs": 1.3,
-    "r3fFps": 10.984,
-    "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
-    "hardware": "hardwareConcurrency=8; deviceMemory=16 GB",
-    "measurement": "R3F useFrame callbacks while the benchmark probe invalidated Canvas frameloop=demand for five seconds."
+    "measurement": "R3F useFrame callbacks while the benchmark probe invalidated Canvas frameloop=demand for five seconds.",
+    "emptyCanvas": {
+      "points": 0,
+      "initializationMs": 11,
+      "r3fFps": 60.264,
+      "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+      "hardware": "hardwareConcurrency=8; deviceMemory=16 GB",
+      "renderer": "Google Inc. (Google) / ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "probe": "0.004 ms / 16.594 ms; invalidations=301"
+    },
+    "pointCloud": {
+      "points": 100000,
+      "initializationMs": 102.8,
+      "r3fFps": 11.269,
+      "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+      "hardware": "hardwareConcurrency=8; deviceMemory=16 GB",
+      "renderer": "Google Inc. (Google) / ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "probe": "0.007 ms / 88.737 ms; invalidations=56"
+    }
   }
 }

@@ -1,32 +1,36 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-test('records the 100,000-point benchmark separately from scientific results', async ({ page, browserName }) => {
-  await page.goto('/?benchmark=100000')
+async function sample(page: Page, benchmark: 'empty' | '100000') {
+  await page.goto(`/?benchmark=${benchmark}`)
   const ready = page.locator('[data-render-ready="true"]')
   const complete = page.locator('[data-render-benchmark-complete="true"]')
   const fallback = page.getByText(/2D longitude\/latitude fallback/)
   await expect(ready.or(fallback)).toBeVisible({ timeout: 30_000 })
-  if (await fallback.isVisible()) {
-    const blocked = { label: 'benchmark only — synthetic rows are never scientific results', points: 100000, status: 'blocked', blocker: 'The Playwright browser could not initialize WebGL and displayed the truthful 2D fallback. No FPS or initialization measurement was recorded.' }
-    await mkdir(path.resolve(process.cwd(), '../docs/evidence'), { recursive: true })
-    await writeFile(path.resolve(process.cwd(), '../docs/evidence/rendering.json'), `${JSON.stringify(blocked, null, 2)}\n`)
-    throw new Error(blocked.blocker)
-  }
+  if (await fallback.isVisible()) throw new Error(`WebGL benchmark ${benchmark} used the truthful fallback; no measurement is available.`)
   await expect(complete).toBeVisible({ timeout: 10_000 })
-  const initializationMs = Number((await page.locator('[data-benchmark-initialization]').textContent())?.replace(' ms', ''))
-  const r3fFps = Number(await page.locator('[data-benchmark-r3f-fps]').textContent())
-  const browser = await page.locator('[data-benchmark-browser]').textContent()
-  const hardware = await page.locator('[data-benchmark-hardware]').textContent()
+  return {
+    points: benchmark === 'empty' ? 0 : 100000,
+    initializationMs: Number((await page.locator('[data-benchmark-initialization]').textContent())?.replace(' ms', '')),
+    r3fFps: Number(await page.locator('[data-benchmark-r3f-fps]').textContent()),
+    browser: await page.locator('[data-benchmark-browser]').textContent(),
+    hardware: await page.locator('[data-benchmark-hardware]').textContent(),
+    renderer: await page.locator('[data-benchmark-renderer]').textContent(),
+    probe: await page.locator('[data-benchmark-probe]').textContent(),
+  }
+}
+
+test('records comparable actual-R3F empty and 100,000-point samples', async ({ page, browserName }) => {
+  const emptyCanvas = await sample(page, 'empty')
+  const pointCloud = await sample(page, '100000')
   const evidence = {
     label: 'benchmark only — synthetic rows are never scientific results',
-    points: 100000,
-    declared: { browser: browserName, hardware: 'Playwright benchmark runner; browser-reported capabilities are displayed separately as measured hardware.' },
-    measured: { initializationMs, r3fFps, browser, hardware, measurement: 'R3F useFrame callbacks while the benchmark probe invalidated Canvas frameloop=demand for five seconds.' },
+    declared: { browser: browserName, hardware: 'Playwright benchmark runner; browser-reported capabilities are recorded separately as measured hardware.' },
+    measured: { measurement: 'R3F useFrame callbacks while the benchmark probe invalidated Canvas frameloop=demand for five seconds.', emptyCanvas, pointCloud },
   }
   await mkdir(path.resolve(process.cwd(), '../docs/evidence'), { recursive: true })
   await writeFile(path.resolve(process.cwd(), '../docs/evidence/rendering.json'), `${JSON.stringify(evidence, null, 2)}\n`)
-  expect(initializationMs).toBeGreaterThan(0)
-  expect(r3fFps).toBeGreaterThan(0)
+  expect(emptyCanvas.r3fFps).toBeGreaterThan(0)
+  expect(pointCloud.r3fFps).toBeGreaterThan(0)
 })
