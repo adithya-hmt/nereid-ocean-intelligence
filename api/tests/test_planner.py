@@ -7,6 +7,7 @@ from nereid_api.models import QueryPlan
 from nereid_api.planner import (
     AzurePlanner,
     ExplicitPlanner,
+    PlannerRejected,
     PlannerUnavailable,
     azure_planner_from_environment,
 )
@@ -58,14 +59,14 @@ def test_explicit_planner_passes_through_validated_filters():
 def test_azure_planner_rejects_unbounded_model_response():
     client = FakeClient(FakeCompletions(FakeResponse(FakeMessage(parsed={"operation": "find_profiles"}))))
 
-    with pytest.raises(PlannerUnavailable, match="filters still work"):
+    with pytest.raises(PlannerRejected, match="filters still work"):
         asyncio.run(AzurePlanner(client, "deployment").plan("find profiles"))
 
 
 def test_azure_planner_rejects_refusal_or_missing_parsed_output():
     for message in (FakeMessage(refusal="I cannot help"), FakeMessage()):
         client = FakeClient(FakeCompletions(FakeResponse(message)))
-        with pytest.raises(PlannerUnavailable):
+        with pytest.raises(PlannerRejected):
             asyncio.run(AzurePlanner(client, "deployment").plan("find profiles"))
 
 

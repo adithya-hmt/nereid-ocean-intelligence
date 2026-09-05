@@ -38,3 +38,7 @@ Secured export ownership with bounded plan plus representation IDs, added repres
 ## Fix round 2
 
 Section cells are now partitioned by `source_profile_index` lanes, preventing cross-representation interpolation. Export timestamps are real UTC generation times, planner refusals are distinct from availability errors, and generated Next instruction files are removed/ignored. The real evaluator exits 2 when Azure is absent; Task 8 remains blocked pending >=27/30 live score.
+
+## Fix round 3 verification
+
+Full exact gate rerun: pipeline 37 passed, API 37 passed, web 18 passed, lint/build passed, ordinary Playwright 2 passed, then headed GPU rendering 1 passed. Evaluator exited 2 configuration-blocked; no live score is claimed.
