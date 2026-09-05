@@ -1,4 +1,3 @@
-# ruff: noqa: I001
 # pyright: reportMissingImports=false
 import csv
 import io
@@ -160,6 +159,10 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
         assert all(row["temperature_adjusted_qc"] not in {"3", "4"} for row in selected)
         methods = json.loads(archive.read("methods.json"))
         assert methods["qc_summary"] == {"retained": 2, "rejected": 4}
+        units = methods["methods"][0]["units"]
+        assert {field: units[field] for field in ("pressure_dbar", "depth_m", "temperature_raw", "temperature_adjusted", "salinity_raw", "salinity_adjusted", "conservative_temperature", "absolute_salinity")} == {
+            "pressure_dbar": "dbar", "depth_m": "m", "temperature_raw": "degC", "temperature_adjusted": "degC", "salinity_raw": "PSS-78 unitless", "salinity_adjusted": "PSS-78 unitless", "conservative_temperature": "degC", "absolute_salinity": "g kg-1",
+        }
 
     altered = client.post(
         "/v1/export",

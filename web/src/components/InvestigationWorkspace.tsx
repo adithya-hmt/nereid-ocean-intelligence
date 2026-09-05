@@ -61,21 +61,29 @@ export function InvestigationWorkspace({ initialResult, benchmark = false, empty
     executionVersion.current += 1
     request.current?.abort()
     request.current = undefined
+    setLoading(false)
+    setError(undefined)
     setResult(undefined)
     setSelections([])
     invalidateSection()
   }
 
-  const updatePlan = (nextPlan: QueryPlan) => {
-    invalidateExecution()
+  const invalidatePlanner = () => {
     plannerVersion.current += 1
     plannerRequest.current?.abort()
+    plannerRequest.current = undefined
+    setPlanning(false)
+    setPlannerWarning(undefined)
+  }
+
+  const updatePlan = (nextPlan: QueryPlan) => {
+    invalidateExecution()
+    invalidatePlanner()
     setPlan(nextPlan)
   }
 
   const updateQuestion = (nextQuestion: string) => {
-    plannerVersion.current += 1
-    plannerRequest.current?.abort()
+    invalidatePlanner()
     setQuestion(nextQuestion)
   }
 
@@ -125,7 +133,10 @@ export function InvestigationWorkspace({ initialResult, benchmark = false, empty
     try {
       const response = await interpretQuestion(question, controller.signal)
       if (plannerRequest.current === controller && plannerVersion.current === version) {
-        if (response.plan) updatePlan(response.plan)
+        if (response.plan) {
+          invalidateExecution()
+          setPlan(response.plan)
+        }
         setPlannerWarning(response.warnings[0])
       }
     } catch (caught) {

@@ -31,16 +31,18 @@ WMO 2902388/cycle 274 contains two source representations. `source_profile_index
 
 ## Validation run
 
-Run on 2026-09-05 after R6 native-gap remediation:
+Run on 2026-09-05 after R8 async-release remediation:
 
 ```bash
 uv run --directory pipeline pytest -q  # passed: 7 tests (186 warnings)
-uv run --directory api pytest -q             # passed: 84 tests (2 warnings)
-npm --prefix web test -- --run src/components/InvestigationWorkspace.test.tsx  # passed: 1 file / 8 tests
-npm --prefix web test -- --run                           # passed: 8 files / 22 tests
+uv run --directory api pytest -q             # passed: 86 tests (2 warnings)
+uv run --directory api ruff check src/nereid_api/service.py tests/test_api.py tests/test_export.py  # passed
+npm --prefix web test -- --run src/components/InvestigationWorkspace.test.tsx src/components/QueryControls.test.tsx  # passed: 2 files / 13 tests
+npm --prefix web test -- --run                           # passed: 9 files / 26 tests
 npm --prefix web run lint                                 # passed
 npm --prefix web run build                                # passed
-cd web && npx playwright test                 # passed: 2 tests
+cd web && npx playwright test                 # failed: 1 passed / 1 failed; winning-flow has no committed-snapshot profile metric to render
+# GPU renderer test intentionally not rerun (no renderer change)
 cd web && NEREID_BENCHMARK_GPU=1 npx playwright test e2e/rendering.spec.ts  # passed: 1 test; run after all Playwright
 uv run --project api python docs/evidence/evaluate_queries.py
 # exits 2: planner evaluation BLOCKED: Azure configuration unavailable; no live score measured

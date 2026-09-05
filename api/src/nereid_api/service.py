@@ -230,6 +230,7 @@ class InvestigationService:
 
     def derive_section(self, request: SectionRequest, query_plan: QueryPlan | None = None) -> ResultEnvelope:
         plan = query_plan or QueryPlan(operation="derive_section", profile_ids=request.profile_ids, parameters=["TEMP", "PSAL"], qc_mode=request.qc_mode, row_limit=request.row_limit)
+        request = request.model_copy(update={"row_limit": plan.row_limit})
         scientific_plan = QueryPlan(
             operation="compare_profiles",
             profile_ids=request.profile_ids,

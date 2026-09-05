@@ -128,6 +128,32 @@ def test_same_bbox_with_excluding_dates_returns_no_match(snapshot_dir):
     ]
 
 
+def test_derive_section_uses_query_plan_row_limit_before_allocating_cells(snapshot_dir):
+    payload = {
+        "operation": "derive_section",
+        "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}],
+        "parameters": ["TEMP", "PSAL"],
+        "row_limit": 6,
+    }
+    response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload)
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "derived section exceeds row_limit"
+
+
+def test_direct_section_request_uses_its_row_limit_before_allocating_cells(snapshot_dir):
+    response = TestClient(create_app(snapshot_dir)).post(
+        "/v1/sections/derive",
+        json={
+            "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}],
+            "row_limit": 6,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "derived section exceeds row_limit"
+
+
 def test_section_masks_unsupported_gap(snapshot_dir):
     client = TestClient(create_app(snapshot_dir))
     response = client.post(

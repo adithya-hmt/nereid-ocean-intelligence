@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 
-import { deriveSection, executeQuery, interpretQuestion } from '../lib/api'
+import { deriveSection, executeQuery, interpretQuestion, type PlannerResponse } from '../lib/api'
 import { CrossSectionPlot } from './CrossSectionPlot'
 import { InvestigationWorkspace } from './InvestigationWorkspace'
 import type { ResultEnvelope } from '../lib/types'
@@ -137,4 +137,44 @@ test('does not let a superseded request replace the newer result', async () => {
   fireEvent.submit(container.querySelector('form')!); fireEvent.submit(container.querySelector('form')!)
   resolveNew({ ...response, data: [row('1900002', 8, 0)] }); await screen.findAllByText(/1900002 \/ cycle 8 \/ A \/ representation 0/)
   resolveOld(response); await waitFor(() => expect(screen.queryByText(/1900001 \/ cycle 7 \/ A \/ representation 0/)).toBeNull())
+})
+
+test('a plan edit aborts a pending execution and clears its loading state', async () => {
+  let resolveExecution: (value: typeof response) => void = () => undefined
+  mockedExecuteQuery.mockImplementationOnce((_plan, signal) => new Promise((resolve) => { resolveExecution = resolve; expect(signal).toBeDefined() }))
+  render(<InvestigationWorkspace />)
+  fireEvent.click(screen.getByRole('button', { name: 'Run investigation' }))
+  await waitFor(() => expect(mockedExecuteQuery).toHaveBeenCalledTimes(1))
+  const signal = mockedExecuteQuery.mock.calls[0][1]!
+  fireEvent.change(screen.getByLabelText('Row limit'), { target: { value: '9' } })
+  expect(signal.aborted).toBe(true)
+  expect(screen.getByRole('button', { name: 'Run investigation' })).toBeDefined()
+  resolveExecution(response)
+  await waitFor(() => expect(screen.queryByLabelText(/1900001 \/ cycle 7/)).toBeNull())
+})
+
+test('a question edit aborts a pending planner and discards its plan and warning', async () => {
+  let resolvePlanner: (value: PlannerResponse) => void = () => undefined
+  mockedInterpretQuestion.mockImplementationOnce(() => new Promise((resolve) => { resolvePlanner = resolve }))
+  render(<InvestigationWorkspace />)
+  fireEvent.change(screen.getByLabelText('Question (optional)'), { target: { value: 'Find profiles' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Interpret question' }))
+  await waitFor(() => expect(mockedInterpretQuestion).toHaveBeenCalledTimes(1))
+  fireEvent.change(screen.getByLabelText('Question (optional)'), { target: { value: 'Find other profiles' } })
+  expect(screen.getByRole('button', { name: 'Interpret question' })).toBeDefined()
+  resolvePlanner({ plan: { ...response.query_plan, row_limit: 9 }, planner: 'azure', warnings: ['stale warning'] })
+  await waitFor(() => expect(screen.queryByText('stale warning')).toBeNull())
+  expect((screen.getByLabelText('Row limit') as HTMLInputElement).value).toBe('10000')
+})
+
+test('a successful planner response applies its plan and exits planning', async () => {
+  let resolvePlanner: (value: PlannerResponse) => void = () => undefined
+  mockedInterpretQuestion.mockImplementationOnce(() => new Promise((resolve) => { resolvePlanner = resolve }))
+  render(<InvestigationWorkspace />)
+  fireEvent.change(screen.getByLabelText('Question (optional)'), { target: { value: 'Find profiles' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Interpret question' }))
+  await waitFor(() => expect(mockedInterpretQuestion).toHaveBeenCalledTimes(1))
+  resolvePlanner({ plan: { ...response.query_plan, row_limit: 9 }, planner: 'azure', warnings: [] })
+  await waitFor(() => expect((screen.getByLabelText('Row limit') as HTMLInputElement).value).toBe('9'))
+  expect(screen.getByRole('button', { name: 'Interpret question' })).toBeDefined()
 })
