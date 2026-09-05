@@ -45,8 +45,8 @@ def create_app(snapshot_dir: Path, web_origin: str | None = None) -> FastAPI:
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
-    @app.post("/v1/sections/derive")
-    def derive_section(request: SectionRequest) -> dict:
+    @app.post("/v1/sections/derive", response_model=ResultEnvelope)
+    def derive_section(request: SectionRequest) -> ResultEnvelope:
         if service is None:
             raise HTTPException(status_code=503, detail="ARGO snapshot is unavailable")
         return service.derive_section(request)

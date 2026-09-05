@@ -43,6 +43,18 @@ def _json_value(value: Any) -> Any:
     return value
 
 
+def _provenance(rows: list[dict[str, Any]]) -> list[Provenance]:
+    return [
+        Provenance(
+            source_url=row["source_url"],
+            snapshot_doi=row["snapshot_doi"],
+            fetched_at=row["fetched_at"],
+            sha256=row["source_sha256"],
+        )
+        for row in {row["source_sha256"]: row for row in rows}.values()
+    ]
+
+
 def _profile_metrics(rows: list[dict[str, Any]], policy: QcPolicy) -> list[dict[str, JsonValue]]:
     grouped: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -112,30 +124,33 @@ class InvestigationService:
         if plan.operation == "find_profiles":
             rows = self.store.find_profiles(plan)
             candidate_count = self.store.count_candidates(plan)
+            eligible_count = self.store.count_qc_eligible(plan)
         elif plan.operation == "get_profile" and plan.wmo is not None and plan.cycle is not None:
             rows = self.store.get_profile(plan.wmo, plan.cycle, plan.qc_mode)
             candidate_count = len(rows)
+            eligible_count = len(rows)
         else:
             raise ValueError(f"unsupported executable operation: {plan.operation}")
 
         data = [{key: _json_value(value) for key, value in row.items()} for row in rows]
-        provenance = [
-            Provenance(
-                source_url=row["source_url"],
-                snapshot_doi=row["snapshot_doi"],
-                fetched_at=row["fetched_at"],
-                sha256=row["source_sha256"],
-            )
-            for row in {row["source_sha256"]: row for row in rows}.values()
-        ]
+        provenance = _provenance(rows)
         metrics = _profile_metrics(rows, plan.qc_mode) if rows else []
-        warnings = [] if rows else ["No matching profiles; widen one bounded filter."]
+        warnings = (
+            ["No matching profiles; widen one bounded filter."]
+            if not rows
+            else ["Results truncated to the requested row limit."]
+            if eligible_count > len(rows)
+            else []
+        )
         return ResultEnvelope(
             query_plan=plan,
             data=data,
             chart_spec=[{"profile_metrics": metrics}],
             provenance=provenance,
-            qc_summary=QcSummary(retained=len(rows), rejected=max(candidate_count - len(rows), 0)),
+            qc_summary=QcSummary(
+                retained=len(rows),
+                rejected=max(candidate_count - eligible_count, 0),
+            ),
             methods=[
                 MethodRecord(
                     name="duckdb_parameterized_profile_query",
@@ -147,8 +162,10 @@ class InvestigationService:
             warnings=warnings,
         )
 
-    def derive_section(self, request: SectionRequest) -> dict[str, Any]:
+    def derive_section(self, request: SectionRequest) -> ResultEnvelope:
+        """Return a complete receipt for a QC-filtered, gap-masked section."""
         rows = self.store.compare_profiles(request.profile_ids, request.qc_mode)
+        candidate_count = self.store.count_profile_candidates(request.profile_ids)
         grouped: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
         for row in rows:
             grouped[(row["wmo"], row["cycle"])].append(row)
@@ -196,4 +213,42 @@ class InvestigationService:
                         else (left_salinity + right_salinity) / 2,
                     }
                 )
-        return {"observation_coordinates": coordinates, "section_cells": cells, "masked_gaps": masked_gaps}
+        section = cast(
+            dict[str, JsonValue],
+            {
+                "observation_coordinates": coordinates,
+                "section_cells": cells,
+                "masked_gaps": masked_gaps,
+            },
+        )
+        wmo, cycle = request.profile_ids[0]
+        plan = QueryPlan(
+            operation="derive_section",
+            wmo=wmo,
+            cycle=cycle,
+            parameters=["TEMP", "PSAL"],
+            qc_mode=request.qc_mode,
+        )
+        return ResultEnvelope(
+            query_plan=plan,
+            data=[section],
+            chart_spec=[{"section": section}],
+            provenance=_provenance(rows),
+            qc_summary=QcSummary(
+                retained=len(rows),
+                rejected=max(candidate_count - len(rows), 0),
+            ),
+            methods=[
+                MethodRecord(
+                    name="gap_masked_linear_section",
+                    version="1",
+                    parameters={
+                        "depth_step_m": request.depth_step_m,
+                        "max_time_gap_hours": request.max_time_gap_hours,
+                        "max_distance_km": request.max_distance_km,
+                    },
+                )
+            ],
+            assumptions=["Vertical interpolation is limited to each profile's native depth range."],
+            warnings=[] if rows else ["No matching profiles; widen one bounded filter."],
+        )

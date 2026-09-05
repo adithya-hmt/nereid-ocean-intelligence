@@ -39,6 +39,25 @@ def test_find_profiles_applies_qc_bounds_and_limit(snapshot_dir):
     assert all(row["salinity_adjusted_qc"] not in {3, 4} for row in exploratory_rows)
 
 
+def test_find_profiles_filters_all_scientific_variables_even_when_unrequested(snapshot_dir):
+    store = ArgoStore(snapshot_dir)
+
+    rows = store.find_profiles(_plan(parameters=[]))
+
+    assert {row["temperature_adjusted_qc"] for row in rows} == {1}
+    assert {row["salinity_adjusted_qc"] for row in rows} == {1}
+
+
+def test_find_profiles_applies_date_filter_with_matching_bbox(snapshot_dir):
+    store = ArgoStore(snapshot_dir)
+
+    rows = store.find_profiles(
+        _plan(start_date="2023-04-01", end_date="2023-04-30")
+    )
+
+    assert rows == []
+
+
 def test_get_profile_and_compare_profiles_apply_qc_policy(snapshot_dir):
     store = ArgoStore(snapshot_dir)
 

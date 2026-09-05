@@ -3,13 +3,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import duckdb
 
-from nereid_api.models import Parameter, QcPolicy, QueryPlan
+from nereid_api.models import QcPolicy, QueryPlan
 
 
 class SnapshotUnavailable(FileNotFoundError):
@@ -24,8 +23,8 @@ _FIND_SQL = """
     WHERE p.longitude BETWEEN ? AND ?
       AND p.latitude BETWEEN ? AND ?
       AND CAST(p.timestamp AS DATE) BETWEEN ? AND ?
-      AND (NOT ? OR (l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2)))
-      AND (NOT ? OR (l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2)))
+      AND (l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2))
+      AND (l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))
     ORDER BY p.timestamp, l.wmo, l.cycle, l.pressure_dbar
     LIMIT ?
 """
@@ -36,23 +35,38 @@ _PROFILE_SQL = """
     FROM levels AS l
     INNER JOIN profiles AS p USING (wmo, cycle, direction)
     WHERE l.wmo = ? AND l.cycle = ?
-      AND (NOT ? OR (l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2)))
-      AND (NOT ? OR (l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2)))
+      AND (l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2))
+      AND (l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))
     ORDER BY p.timestamp, l.pressure_dbar
 """
 
 _CANDIDATE_COUNT_SQL = """
-    SELECT count(*) FROM levels AS l
+    SELECT count(*) AS row_count FROM levels AS l
     INNER JOIN profiles AS p USING (wmo, cycle, direction)
     WHERE p.longitude BETWEEN ? AND ?
       AND p.latitude BETWEEN ? AND ?
       AND CAST(p.timestamp AS DATE) BETWEEN ? AND ?
 """
 
+_ELIGIBLE_COUNT_SQL = """
+    SELECT count(*) AS row_count FROM levels AS l
+    INNER JOIN profiles AS p USING (wmo, cycle, direction)
+    WHERE p.longitude BETWEEN ? AND ?
+      AND p.latitude BETWEEN ? AND ?
+      AND CAST(p.timestamp AS DATE) BETWEEN ? AND ?
+      AND (l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2))
+      AND (l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))
+"""
 
-def _qc_values(parameters: Sequence[Parameter], policy: QcPolicy) -> list[bool]:
+_PROFILE_CANDIDATE_COUNT_SQL = """
+    SELECT count(*) AS row_count FROM levels
+    WHERE wmo = ? AND cycle = ?
+"""
+
+
+def _qc_values(policy: QcPolicy) -> list[bool]:
     exploratory = policy is QcPolicy.EXPLORATORY
-    return ["TEMP" in parameters, exploratory, "PSAL" in parameters, exploratory]
+    return [exploratory, exploratory]
 
 
 class ArgoStore:
@@ -71,7 +85,7 @@ class ArgoStore:
         self.connection.read_parquet(str(levels_path)).create_view("levels")
 
     def _rows(self, sql: str, values: list[Any]) -> list[dict[str, Any]]:
-        cursor = self.connection.execute(sql, values)
+        cursor = self.connection.execute(sql, values)  # nosec B608: callers use fixed SQL templates with bound values.
         columns = [column[0] for column in cursor.description]
         return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
 
@@ -88,7 +102,7 @@ class ArgoStore:
                 north,
                 plan.start_date,
                 plan.end_date,
-                *_qc_values(plan.parameters, plan.qc_mode),
+                *_qc_values(plan.qc_mode),
                 plan.row_limit,
             ],
         )
@@ -97,18 +111,43 @@ class ArgoStore:
         """Count unfiltered levels selected by a bounded plan for QC reporting."""
         assert plan.bbox and plan.start_date and plan.end_date
         west, south, east, north = plan.bbox
-        result = self.connection.execute(
+        result = self._rows(
             _CANDIDATE_COUNT_SQL,
             [west, east, south, north, plan.start_date, plan.end_date],
-        ).fetchone()
-        if result is None:
-            return 0
-        return int(result[0])
+        )
+        return int(result[0]["row_count"]) if result else 0
+
+    def count_qc_eligible(self, plan: QueryPlan) -> int:
+        """Count policy-allowed rows before pagination for an accurate QC summary."""
+        assert plan.bbox and plan.start_date and plan.end_date
+        west, south, east, north = plan.bbox
+        result = self._rows(
+            _ELIGIBLE_COUNT_SQL,
+            [
+                west,
+                east,
+                south,
+                north,
+                plan.start_date,
+                plan.end_date,
+                plan.qc_mode is QcPolicy.EXPLORATORY,
+                plan.qc_mode is QcPolicy.EXPLORATORY,
+            ],
+        )
+        return int(result[0]["row_count"]) if result else 0
+
+    def count_profile_candidates(self, profile_ids: list[tuple[str, int]]) -> int:
+        """Count unfiltered selected levels for section QC accounting."""
+        return sum(
+            int(result[0]["row_count"])
+            for wmo, cycle in profile_ids
+            if (result := self._rows(_PROFILE_CANDIDATE_COUNT_SQL, [wmo, cycle]))
+        )
 
     def get_profile(self, wmo: str, cycle: int, qc_mode: QcPolicy) -> list[dict[str, Any]]:
         return self._rows(
             _PROFILE_SQL,
-            [wmo, cycle, *_qc_values(["TEMP", "PSAL"], qc_mode)],
+            [wmo, cycle, *_qc_values(qc_mode)],
         )
 
     def compare_profiles(
