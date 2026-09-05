@@ -1,3 +1,5 @@
+import { InvestigationWorkspace } from '../components/InvestigationWorkspace'
+
 export default function Page() {
-  return <h1>Nereid Ocean Investigation</h1>
+  return <InvestigationWorkspace />
 }
