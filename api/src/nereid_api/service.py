@@ -200,6 +200,8 @@ class InvestigationService:
         )
         candidate_count = self.store.count_selected_candidates(plan, requested)
         eligible_count = self.store.count_selected_qc_eligible(plan, requested)
+        if eligible_count > plan.row_limit:
+            raise ValueError("exact selection exceeds row_limit")
         selected_envelope = self._envelope(plan, selected_rows, candidate_count, eligible_count)
         # The receipt retains the original bounded query rather than turning
         # selected evidence into an implicit compare query.
@@ -239,7 +241,7 @@ class InvestigationService:
                 left_salinity, left_salinity_reason = _interpolate(left, depth, "absolute_salinity", request.max_vertical_gap_m)
                 right_salinity, right_salinity_reason = _interpolate(right, depth, "absolute_salinity", request.max_vertical_gap_m)
                 vertical_reason = temperature_reason or right_temperature_reason or left_salinity_reason or right_salinity_reason
-                cell_reason = reason or vertical_reason
+                cell_reason = vertical_reason or reason
                 cells.append({"left_profile_index": index, "right_profile_index": index + 1, "depth_m": float(depth), "temperature": None if cell_reason or temperature is None or right_temperature is None else (temperature + right_temperature) / 2, "salinity": None if cell_reason or left_salinity is None or right_salinity is None else (left_salinity + right_salinity) / 2, "mask_reason": cell_reason})
         section = cast(dict[str, JsonValue], {"observation_coordinates": coordinates, "section_cells": cells, "masked_gaps": gaps})
         return envelope.model_copy(update={"data": [section], "chart_spec": [{"section": section}], "section_request": request, "methods": [MethodRecord(name="gap_masked_linear_section", version="1", parameters={"depth_step_m": request.depth_step_m, "max_time_gap_hours": request.max_time_gap_hours, "max_distance_km": request.max_distance_km, "max_vertical_gap_m": request.max_vertical_gap_m})], "assumptions": ["Sections only connect the explicitly requested source representations."]})

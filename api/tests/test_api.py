@@ -375,6 +375,29 @@ def test_section_marks_rejected_native_middle_level_as_vertical_gap(snapshot_dir
     assert cell["mask_reason"] == "vertical_gap"
 
 
+def test_section_prioritizes_vertical_gap_over_pair_time_gap(snapshot_dir):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    levels = pq.read_table(snapshot_dir / "levels.parquet").to_pylist()
+    for row in levels:
+        if row["level_index"] == 1:
+            row["pressure_adjusted_qc"] = 4
+    pq.write_table(pa.Table.from_pylist(levels), snapshot_dir / "levels.parquet")
+    response = TestClient(create_app(snapshot_dir)).post("/v1/sections/derive", json={
+        "profile_ids": [{"wmo": "1900001", "cycle": 7, "direction": "A", "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "direction": "A", "source_profile_index": 0}],
+        "qc_mode": "research", "depth_step_m": 5, "max_vertical_gap_m": 100, "max_time_gap_hours": 24,
+    })
+
+    assert response.status_code == 200
+    section = response.json()["data"][0]
+    assert section["masked_gaps"] == [
+        {"left_profile_index": 0, "right_profile_index": 1, "reason": "time_gap"}
+    ]
+    cell = next(cell for cell in section["section_cells"] if cell["depth_m"] == 5)
+    assert cell["mask_reason"] == "vertical_gap"
+
+
 def test_exact_selection_keeps_ascending_and_descending_collision_distinct(snapshot_dir):
     """Direction is part of the source-local representation identity."""
     import pyarrow as pa

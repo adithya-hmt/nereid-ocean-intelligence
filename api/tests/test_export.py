@@ -171,6 +171,50 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
     assert altered.status_code == 422
 
 
+def test_export_rejects_selected_complete_rows_above_plan_limit_for_find_profiles(snapshot_dir):
+    from nereid_api.main import create_app
+
+    response = TestClient(create_app(snapshot_dir)).post(
+        "/v1/export",
+        json={
+            "plan": {
+                "operation": "find_profiles",
+                "bbox": [60, 0, 80, 20],
+                "start_date": "2023-03-01",
+                "end_date": "2023-03-31",
+                "parameters": ["TEMP"],
+                "row_limit": 1,
+            },
+            "selections": [{"wmo": "1900001", "cycle": 7, "direction": "A", "source_profile_index": 0}],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "exact selection exceeds row_limit"
+
+
+def test_export_rejects_selected_complete_rows_above_plan_limit_for_get_profile(snapshot_dir):
+    from nereid_api.main import create_app
+
+    response = TestClient(create_app(snapshot_dir)).post(
+        "/v1/export",
+        json={
+            "plan": {
+                "operation": "get_profile",
+                "wmo": "1900001",
+                "cycle": 7,
+                "direction": "A",
+                "parameters": ["TEMP"],
+                "row_limit": 1,
+            },
+            "selections": [{"wmo": "1900001", "cycle": 7, "direction": "A", "source_profile_index": 0}],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "exact selection exceeds row_limit"
+
+
 def test_export_selection_recomputes_receipt_for_exact_multiple_representations(snapshot_dir):
     from nereid_api.main import create_app
 
