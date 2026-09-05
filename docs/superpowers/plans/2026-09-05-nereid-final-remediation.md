@@ -301,3 +301,16 @@ Use `run_plan` in the documented latency command and either restore the truthful
 - [ ] Display and permit correction of every typed plan selector: operation, parameters, row limit, geographic/date filters, WMO/cycle/direction, exact profile IDs, and nearest count.
 - [ ] Normalize empty parameters to all canonical parameters in both controls and plan display; hide unrequested profile table columns.
 - [ ] Run full API/web/offline release validation, reconcile exact evidence, and commit `fix: harden hackathon release boundaries`.
+
+---
+
+### Task R9: Close final cross-feature release seams
+
+- [ ] Make section output parameter-faithful: allow TEMP and/or PSAL only, use PSAL internally for CT when needed, and never expose an unrequested section variable.
+- [ ] Carry the visible query row limit and editable depth/time/distance/vertical controls into linked section requests; preflight the effective limit.
+- [ ] Invalidate any older planner request when explicit execution begins; add the cross-lane race regression.
+- [ ] Select nearest representation identities and count eligible levels before fetching level rows; reject overflow before materialization.
+- [ ] Add varied explicit row limits to all allowed planner cases and remove duplicate allowed questions without changing the 25/5 split.
+- [ ] Render direct typed `derive_section` results as sections and order all section coordinates/cells chronologically with deterministic identity tie-breakers.
+- [ ] Preserve query and TEOS-10 method records in section/export receipts; add units for every raw, adjusted, error, TEOS-10, and section field.
+- [ ] Run full pipeline/API/web/offline validation, reconcile evidence, and commit `fix: close final release seams`.
