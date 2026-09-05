@@ -1,0 +1,191 @@
+diff --git a/.superpowers/sdd/2026-09-05-nereid-mvp/final-r3-report.md b/.superpowers/sdd/2026-09-05-nereid-mvp/final-r3-report.md
+index ede8c20..db89e38 100644
+--- a/.superpowers/sdd/2026-09-05-nereid-mvp/final-r3-report.md
++++ b/.superpowers/sdd/2026-09-05-nereid-mvp/final-r3-report.md
+@@ -20,3 +20,19 @@ Validation actually run:
+ - `git diff --check` — passed.
+ 
+ Residual limitation: Azure evaluator remains blocked/unmeasured; lens diagnostics executable is not installed. No product-scoped issue is known from the implemented workflow tests.
++
++
++## R3 fix round 1
++
++Section invalidation now aborts and clears on any selection update and on every main-query replacement; stale section promise success, error, and finally paths are guarded by controller identity. Raw profile labels now identify Practical Salinity as PSS-78/unitless.
++
++Validation actually run:
++
++- `pnpm --dir web test --run src/components/InvestigationWorkspace.test.tsx` — 7 passed.
++- `uv run --project pipeline pytest pipeline/tests -v` — 7 passed, 186 warnings.
++- `uv run --project api pytest api/tests -v` — 57 passed, 2 warnings.
++- `pnpm --dir web test --run` — 7 files, 19 tests passed.
++- `pnpm --dir web lint` and `pnpm --dir web build` — passed.
++- `pnpm --dir web exec playwright test` — 2 passed.
++- `uv run --project api python docs/evidence/evaluate_queries.py` — expected exit 2; Azure blocked/unmeasured.
++- `NEREID_BENCHMARK_GPU=1 pnpm --dir web exec playwright test e2e/rendering.spec.ts` — 1 passed, run last; 58.303 FPS at 100,000 points.
+diff --git a/docs/evidence/acceptance.md b/docs/evidence/acceptance.md
+index 497adda..a863752 100644
+--- a/docs/evidence/acceptance.md
++++ b/docs/evidence/acceptance.md
+@@ -31,12 +31,12 @@ WMO 2902388/cycle 274 contains two source representations. `source_profile_index
+ 
+ ## Validation run
+ 
+-Run on 2026-09-05 after the linked exact-representation workflow change:
++Run on 2026-09-05 after R3 fix round 1:
+ 
+ ```bash
+-uv run --project pipeline pytest -v                 # passed: 64 tests (188 warnings)
+-uv run --project api pytest -v                      # passed: 64 tests (188 warnings)
+-pnpm --dir web test --run                           # passed: 7 files / 17 tests
++uv run --project pipeline pytest pipeline/tests -v  # passed: 7 tests (186 warnings)
++uv run --project api pytest api/tests -v            # passed: 57 tests (2 warnings)
++pnpm --dir web test --run                           # passed: 7 files / 19 tests
+ pnpm --dir web lint                                 # passed
+ pnpm --dir web build                                # passed
+ pnpm --dir web exec playwright test                 # passed: 2 tests
+@@ -45,7 +45,7 @@ uv run --project api python docs/evidence/evaluate_queries.py
+ # exits 2: planner evaluation BLOCKED: Azure configuration unavailable; no live score measured
+ ```
+ 
+-The full offline Playwright replay selects exactly `1902202/161/0` and `2902388/274/0`, renders two separate profile panels and metric/refusal states, derives a gap-masked section from those IDs, verifies longitude/latitude/depth/time trajectory metadata, and confirms the same two IDs are posted to the offline evidence export endpoint. The GPU benchmark was run last among browser measurements. `rendering.json` records Intel UHD Graphics 620 and an actual 100,000-point R3F result of **56.340 FPS** (161.2 ms initialization); the hardware-mode test requires at least 30 FPS. The default SwiftShader/headless mode requires only completion with a positive measured FPS, so it does not falsify the hardware target.
++The full offline Playwright replay selects exactly `1902202/161/0` and `2902388/274/0`, renders two separate profile panels and metric/refusal states, derives a gap-masked section from those IDs, verifies longitude/latitude/depth/time trajectory metadata, and confirms the same two IDs are posted to the offline evidence export endpoint. The GPU benchmark was run last among browser measurements. `rendering.json` records Intel UHD Graphics 620 and an actual 100,000-point R3F result of **58.303 FPS** (119.6 ms initialization); the hardware-mode test requires at least 30 FPS. The default SwiftShader/headless mode requires only completion with a positive measured FPS, so it does not falsify the hardware target.
+ 
+ Tracked-file scanning found no high-confidence API key/private-key patterns. `pnpm --dir web licenses list` completed (955 output lines). `lens_diagnostics mode=all` could not be measured because the executable is unavailable in this environment. `git diff --check` passed.
+ 
+diff --git a/docs/evidence/rendering.json b/docs/evidence/rendering.json
+index 2c8eb4f..ce214d0 100644
+--- a/docs/evidence/rendering.json
++++ b/docs/evidence/rendering.json
+@@ -10,21 +10,21 @@
+     "measurement": "R3F useFrame callbacks while the benchmark probe invalidated Canvas frameloop=demand for five seconds.",
+     "emptyCanvas": {
+       "points": 0,
+-      "initializationMs": 13,
+-      "r3fFps": 60.291,
++      "initializationMs": 27.4,
++      "r3fFps": 58.568,
+       "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+       "hardware": "hardwareConcurrency=8; deviceMemory=16 GB",
+       "renderer": "Google Inc. (Intel) / ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (WHL GT2), OpenGL ES 3.2)",
+-      "probe": "0.008 ms / 16.586 ms; invalidations=301"
++      "probe": "0.007 ms / 17.074 ms; invalidations=293"
+     },
+     "pointCloud": {
+       "points": 100000,
+-      "initializationMs": 161.2,
+-      "r3fFps": 56.34,
++      "initializationMs": 119.6,
++      "r3fFps": 58.303,
+       "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+       "hardware": "hardwareConcurrency=8; deviceMemory=16 GB",
+       "renderer": "Google Inc. (Intel) / ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (WHL GT2), OpenGL ES 3.2)",
+-      "probe": "0.008 ms / 17.749 ms; invalidations=281"
++      "probe": "0.009 ms / 17.152 ms; invalidations=291"
+     }
+   }
+ }
+diff --git a/web/src/components/InvestigationWorkspace.test.tsx b/web/src/components/InvestigationWorkspace.test.tsx
+index 30c081c..50c9bbf 100644
+--- a/web/src/components/InvestigationWorkspace.test.tsx
++++ b/web/src/components/InvestigationWorkspace.test.tsx
+@@ -29,7 +29,7 @@ test('links exactly two default representations across plots and metric refusals
+   expect(screen.getByText(/-0.2 degC m-1 at 50 m/)).toBeDefined()
+   expect(screen.getAllByText(/Insufficient evidence for/).length).toBeGreaterThan(0)
+   fireEvent.click(screen.getByRole('radio', { name: 'Raw observations' }))
+-  expect(screen.getAllByRole('img', { name: /in-situ Temperature/ })).toHaveLength(2)
++  expect(screen.getAllByRole('img', { name: /in-situ Temperature \(degC\) and Practical Salinity \(PSS-78, unitless\)/ })).toHaveLength(2)
+ })
+ 
+ test('resets selection only after a successful replacement result', async () => {
+@@ -53,6 +53,36 @@ test('derives a section with the same exact selected IDs and retains prior data
+   expect(screen.getByRole('table', { name: 'Cross-section observations' })).toBeDefined()
+ })
+ 
++test('selection changes abort and invalidate an in-flight section', async () => {
++  let resolveSection: (value: typeof section) => void = () => undefined
++  mockedDeriveSection.mockImplementationOnce((_request, signal) => new Promise((resolve) => { resolveSection = resolve; expect(signal).toBeDefined() }))
++  render(<InvestigationWorkspace initialResult={response} />)
++  fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
++  await waitFor(() => expect(mockedDeriveSection).toHaveBeenCalledTimes(1))
++  const signal = mockedDeriveSection.mock.calls[0][1]!
++  fireEvent.click(screen.getByLabelText(/1900003 \/ cycle 9 \/ representation 0/))
++  expect(signal.aborted).toBe(true)
++  resolveSection(section)
++  await waitFor(() => expect(screen.queryByRole('table', { name: 'Cross-section observations' })).toBeNull())
++})
++
++test('a replacement query invalidates an older section response', async () => {
++  let resolveSection: (value: typeof section) => void = () => undefined
++  let resolveQuery: (value: typeof response) => void = () => undefined
++  mockedDeriveSection.mockImplementationOnce(() => new Promise((resolve) => { resolveSection = resolve }))
++  mockedExecuteQuery.mockImplementationOnce(() => new Promise((resolve) => { resolveQuery = resolve }))
++  render(<InvestigationWorkspace initialResult={response} />)
++  fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
++  await waitFor(() => expect(mockedDeriveSection).toHaveBeenCalledTimes(1))
++  const signal = mockedDeriveSection.mock.calls[0][1]!
++  fireEvent.click(screen.getByRole('button', { name: 'Run investigation' }))
++  expect(signal.aborted).toBe(true)
++  resolveSection(section)
++  resolveQuery({ ...response, data: [row('1900010', 10, 0), row('1900011', 11, 0)] })
++  await screen.findByLabelText(/1900010 \/ cycle 10 \/ representation 0/)
++  expect(screen.queryByRole('table', { name: 'Cross-section observations' })).toBeNull()
++})
++
+ test('shows that explicit filters still work when AI interpretation is unavailable', async () => {
+   mockedInterpretQuestion.mockResolvedValue({ plan: null, planner: 'explicit', warnings: ['AI interpretation unavailable—filters still work. Use explicit filters.'] })
+   render(<InvestigationWorkspace />)
+diff --git a/web/src/components/InvestigationWorkspace.tsx b/web/src/components/InvestigationWorkspace.tsx
+index 3ada488..b4bd4e0 100644
+--- a/web/src/components/InvestigationWorkspace.tsx
++++ b/web/src/components/InvestigationWorkspace.tsx
+@@ -39,8 +39,22 @@ export function InvestigationWorkspace({ initialResult, benchmark = false, empty
+   const request = useRef<AbortController | undefined>(undefined)
+   const sectionRequest = useRef<AbortController | undefined>(undefined)
+ 
++  const invalidateSection = () => {
++    sectionRequest.current?.abort()
++    sectionRequest.current = undefined
++    setSection(undefined)
++    setSectionError(undefined)
++    setSectionLoading(false)
++  }
++
++  const updateSelections = (nextSelections: ExactProfileIdentifier[]) => {
++    invalidateSection()
++    setSelections(nextSelections)
++  }
++
+   const submit = async () => {
+     request.current?.abort()
++    invalidateSection()
+     const controller = new AbortController()
+     request.current = controller
+     setLoading(true); setError(undefined)
+@@ -49,7 +63,6 @@ export function InvestigationWorkspace({ initialResult, benchmark = false, empty
+       if (request.current === controller) {
+         setResult(nextResult)
+         setSelections(availableRepresentations(nextResult).slice(0, 2))
+-        setSection(undefined)
+       }
+     } catch (caught) {
+       if (request.current === controller && !(caught instanceof DOMException && caught.name === 'AbortError')) setError(caught instanceof ApiError ? `${caught.status}: ${caught.message}` : 'The investigation could not be updated. Check the snapshot and try again.')
+@@ -76,5 +89,5 @@ export function InvestigationWorkspace({ initialResult, benchmark = false, empty
+   }
+ 
+   const trajectoryRows = result?.data.filter(isTrajectoryRow) ?? []
+-  return <main className="workspace"><header className="workspace-header"><h1>Nereid Ocean Investigation</h1><p>Traceable ARGO evidence for a bounded question near 10°N, 70°E.</p></header>{benchmark ? <><TrajectoryGlobe rows={benchmarkRows} benchmark drawPoints={!emptyBenchmark} /><p className="benchmark-label">Declared browser and hardware are recorded separately from measured values in the rendering benchmark evidence.</p></> : <><QueryControls plan={plan} question={question} loading={loading} planning={planning} plannerWarning={plannerWarning} onChange={setPlan} onQuestionChange={setQuestion} onInterpret={interpret} onSubmit={submit} onExample={() => setPlan(winningPlan)} /><QueryPlanPanel plan={plan} />{error && <p className="status error" role="alert">{error}</p>}{result ? <><section className="visualization" aria-labelledby="visualization-heading"><h2 id="visualization-heading">Investigation view</h2>{trajectoryRows.length ? <TrajectoryGlobe key={`${trajectoryRows.length}-${trajectoryRows[0].timestamp}`} rows={trajectoryRows} /> : result.data.length ? <p className="status empty">The returned observations have no complete longitude, latitude, depth, and time coordinates for a truthful trajectory.</p> : <p className="status empty">{result.warnings[0] ?? 'No observations are available for this bounded request.'}</p>}</section><ProfilePlot result={result} selections={selections} /><ProfileMetrics result={result} selections={selections} /><section className="section-request" aria-labelledby="section-request-heading"><h2 id="section-request-heading">Derived cross-section</h2><p>Uses exactly the selected representations; unsupported gaps remain masked.</p><button className="primary-button" type="button" disabled={selections.length < 2 || sectionLoading} onClick={() => void requestSection()}>{sectionLoading ? 'Deriving section…' : 'Derive section from selected representations'}</button>{selections.length < 2 && <p role="status">Select at least two exact representations before requesting a section.</p>}{sectionError && <p className="status error" role="alert">{sectionError}</p>}</section>{section && <CrossSectionPlot result={section} />}<ScientificReceipt result={result} selections={selections} onSelectionChange={setSelections} /></> : <section className="visualization empty" aria-live="polite"><h2>Investigation view</h2><p>Run the bounded query to inspect source-faithful observations and their receipt.</p></section>}</>}</main>
++  return <main className="workspace"><header className="workspace-header"><h1>Nereid Ocean Investigation</h1><p>Traceable ARGO evidence for a bounded question near 10°N, 70°E.</p></header>{benchmark ? <><TrajectoryGlobe rows={benchmarkRows} benchmark drawPoints={!emptyBenchmark} /><p className="benchmark-label">Declared browser and hardware are recorded separately from measured values in the rendering benchmark evidence.</p></> : <><QueryControls plan={plan} question={question} loading={loading} planning={planning} plannerWarning={plannerWarning} onChange={setPlan} onQuestionChange={setQuestion} onInterpret={interpret} onSubmit={submit} onExample={() => setPlan(winningPlan)} /><QueryPlanPanel plan={plan} />{error && <p className="status error" role="alert">{error}</p>}{result ? <><section className="visualization" aria-labelledby="visualization-heading"><h2 id="visualization-heading">Investigation view</h2>{trajectoryRows.length ? <TrajectoryGlobe key={`${trajectoryRows.length}-${trajectoryRows[0].timestamp}`} rows={trajectoryRows} /> : result.data.length ? <p className="status empty">The returned observations have no complete longitude, latitude, depth, and time coordinates for a truthful trajectory.</p> : <p className="status empty">{result.warnings[0] ?? 'No observations are available for this bounded request.'}</p>}</section><ProfilePlot result={result} selections={selections} /><ProfileMetrics result={result} selections={selections} /><section className="section-request" aria-labelledby="section-request-heading"><h2 id="section-request-heading">Derived cross-section</h2><p>Uses exactly the selected representations; unsupported gaps remain masked.</p><button className="primary-button" type="button" disabled={selections.length < 2 || sectionLoading} onClick={() => void requestSection()}>{sectionLoading ? 'Deriving section…' : 'Derive section from selected representations'}</button>{selections.length < 2 && <p role="status">Select at least two exact representations before requesting a section.</p>}{sectionError && <p className="status error" role="alert">{sectionError}</p>}</section>{section && <CrossSectionPlot result={section} />}<ScientificReceipt result={result} selections={selections} onSelectionChange={updateSelections} /></> : <section className="visualization empty" aria-live="polite"><h2>Investigation view</h2><p>Run the bounded query to inspect source-faithful observations and their receipt.</p></section>}</>}</main>
+ }
+diff --git a/web/src/components/ProfilePlot.tsx b/web/src/components/ProfilePlot.tsx
+index ee35d13..f94c3b5 100644
+--- a/web/src/components/ProfilePlot.tsx
++++ b/web/src/components/ProfilePlot.tsx
+@@ -14,7 +14,7 @@ export function ProfilePlot({ result, selections }: { result: ResultEnvelope; se
+   }), [result])
+   const selected = selections.map((selection) => ({ selection, levels: observations.filter((row) => profileKey(row) === profileKey(selection)) })).filter(({ levels }) => levels.length)
+   if (!selected.length) return null
+-  const variables = kind === 'best' ? ['Conservative Temperature (degC)', 'Absolute Salinity (g kg-1)'] : ['in-situ Temperature (degC)', 'Practical Salinity (g kg-1)']
++  const variables = kind === 'best' ? ['Conservative Temperature (degC)', 'Absolute Salinity (g kg-1)'] : ['in-situ Temperature (degC)', 'Practical Salinity (PSS-78, unitless)']
+   return <section className="profile-section" aria-labelledby="profile-heading"><div className="section-title"><h2 id="profile-heading">Native profile observations</h2><p>Each source representation remains separate.</p></div><fieldset className="observation-switch"><legend>Displayed values</legend><label><input type="radio" name="observation-kind" checked={kind === 'best'} onChange={() => setKind('best')} /> Best adjusted</label><label><input type="radio" name="observation-kind" checked={kind === 'raw'} onChange={() => setKind('raw')} /> Raw observations</label></fieldset>{selected.map(({ selection, levels }) => <ProfilePanel key={profileKey(selection)} levels={levels} kind={kind} variables={variables} />)}</section>
+ }
+ 

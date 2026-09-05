@@ -20,3 +20,19 @@ Validation actually run:
 - `git diff --check` — passed.
 
 Residual limitation: Azure evaluator remains blocked/unmeasured; lens diagnostics executable is not installed. No product-scoped issue is known from the implemented workflow tests.
+
+
+## R3 fix round 1
+
+Section invalidation now aborts and clears on any selection update and on every main-query replacement; stale section promise success, error, and finally paths are guarded by controller identity. Raw profile labels now identify Practical Salinity as PSS-78/unitless.
+
+Validation actually run:
+
+- `pnpm --dir web test --run src/components/InvestigationWorkspace.test.tsx` — 7 passed.
+- `uv run --project pipeline pytest pipeline/tests -v` — 7 passed, 186 warnings.
+- `uv run --project api pytest api/tests -v` — 57 passed, 2 warnings.
+- `pnpm --dir web test --run` — 7 files, 19 tests passed.
+- `pnpm --dir web lint` and `pnpm --dir web build` — passed.
+- `pnpm --dir web exec playwright test` — 2 passed.
+- `uv run --project api python docs/evidence/evaluate_queries.py` — expected exit 2; Azure blocked/unmeasured.
+- `NEREID_BENCHMARK_GPU=1 pnpm --dir web exec playwright test e2e/rendering.spec.ts` — 1 passed, run last; 58.303 FPS at 100,000 points.

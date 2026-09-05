@@ -29,7 +29,7 @@ test('links exactly two default representations across plots and metric refusals
   expect(screen.getByText(/-0.2 degC m-1 at 50 m/)).toBeDefined()
   expect(screen.getAllByText(/Insufficient evidence for/).length).toBeGreaterThan(0)
   fireEvent.click(screen.getByRole('radio', { name: 'Raw observations' }))
-  expect(screen.getAllByRole('img', { name: /in-situ Temperature/ })).toHaveLength(2)
+  expect(screen.getAllByRole('img', { name: /in-situ Temperature \(degC\) and Practical Salinity \(PSS-78, unitless\)/ })).toHaveLength(2)
 })
 
 test('resets selection only after a successful replacement result', async () => {
@@ -51,6 +51,36 @@ test('derives a section with the same exact selected IDs and retains prior data 
   fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
   await screen.findByRole('alert')
   expect(screen.getByRole('table', { name: 'Cross-section observations' })).toBeDefined()
+})
+
+test('selection changes abort and invalidate an in-flight section', async () => {
+  let resolveSection: (value: typeof section) => void = () => undefined
+  mockedDeriveSection.mockImplementationOnce((_request, signal) => new Promise((resolve) => { resolveSection = resolve; expect(signal).toBeDefined() }))
+  render(<InvestigationWorkspace initialResult={response} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
+  await waitFor(() => expect(mockedDeriveSection).toHaveBeenCalledTimes(1))
+  const signal = mockedDeriveSection.mock.calls[0][1]!
+  fireEvent.click(screen.getByLabelText(/1900003 \/ cycle 9 \/ representation 0/))
+  expect(signal.aborted).toBe(true)
+  resolveSection(section)
+  await waitFor(() => expect(screen.queryByRole('table', { name: 'Cross-section observations' })).toBeNull())
+})
+
+test('a replacement query invalidates an older section response', async () => {
+  let resolveSection: (value: typeof section) => void = () => undefined
+  let resolveQuery: (value: typeof response) => void = () => undefined
+  mockedDeriveSection.mockImplementationOnce(() => new Promise((resolve) => { resolveSection = resolve }))
+  mockedExecuteQuery.mockImplementationOnce(() => new Promise((resolve) => { resolveQuery = resolve }))
+  render(<InvestigationWorkspace initialResult={response} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Derive section from selected representations' }))
+  await waitFor(() => expect(mockedDeriveSection).toHaveBeenCalledTimes(1))
+  const signal = mockedDeriveSection.mock.calls[0][1]!
+  fireEvent.click(screen.getByRole('button', { name: 'Run investigation' }))
+  expect(signal.aborted).toBe(true)
+  resolveSection(section)
+  resolveQuery({ ...response, data: [row('1900010', 10, 0), row('1900011', 11, 0)] })
+  await screen.findByLabelText(/1900010 \/ cycle 10 \/ representation 0/)
+  expect(screen.queryByRole('table', { name: 'Cross-section observations' })).toBeNull()
 })
 
 test('shows that explicit filters still work when AI interpretation is unavailable', async () => {

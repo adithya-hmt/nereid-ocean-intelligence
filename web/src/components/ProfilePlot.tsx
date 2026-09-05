@@ -14,7 +14,7 @@ export function ProfilePlot({ result, selections }: { result: ResultEnvelope; se
   }), [result])
   const selected = selections.map((selection) => ({ selection, levels: observations.filter((row) => profileKey(row) === profileKey(selection)) })).filter(({ levels }) => levels.length)
   if (!selected.length) return null
-  const variables = kind === 'best' ? ['Conservative Temperature (degC)', 'Absolute Salinity (g kg-1)'] : ['in-situ Temperature (degC)', 'Practical Salinity (g kg-1)']
+  const variables = kind === 'best' ? ['Conservative Temperature (degC)', 'Absolute Salinity (g kg-1)'] : ['in-situ Temperature (degC)', 'Practical Salinity (PSS-78, unitless)']
   return <section className="profile-section" aria-labelledby="profile-heading"><div className="section-title"><h2 id="profile-heading">Native profile observations</h2><p>Each source representation remains separate.</p></div><fieldset className="observation-switch"><legend>Displayed values</legend><label><input type="radio" name="observation-kind" checked={kind === 'best'} onChange={() => setKind('best')} /> Best adjusted</label><label><input type="radio" name="observation-kind" checked={kind === 'raw'} onChange={() => setKind('raw')} /> Raw observations</label></fieldset>{selected.map(({ selection, levels }) => <ProfilePanel key={profileKey(selection)} levels={levels} kind={kind} variables={variables} />)}</section>
 }
 
