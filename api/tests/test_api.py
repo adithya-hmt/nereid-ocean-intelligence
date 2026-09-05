@@ -248,6 +248,8 @@ def test_parameter_specific_qc_and_masking(snapshot_dir, parameters):
         assert all(row["pressure_adjusted_qc"] in {1, 2} for row in rows)
     else:
         assert all(row["pressure_adjusted_qc"] is None for row in rows)
+        assert all(row["pressure_dbar"] is None for row in rows)
+        assert all(row["adjusted_pressure_error"] is None for row in rows)
     if parameters == ["TEMP"]:
         assert all(row["temperature_adjusted_qc"] in {1, 2} for row in rows)
         assert all(row["salinity_adjusted"] is None for row in rows if row["salinity_adjusted_qc"] is None)
@@ -306,7 +308,7 @@ def test_temp_only_never_returns_ct_from_bad_salinity_qc(snapshot_dir):
 def test_unrequested_variables_are_completely_masked(snapshot_dir, parameters):
     payload = {"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": parameters, "qc_mode": "exploratory"}
     rows = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload).json()["data"]
-    fields = {"TEMP": ["temperature_raw", "temperature_adjusted", "temperature_best", "temperature_qc", "temperature_adjusted_qc", "temperature_adjusted_error", "conservative_temperature"], "PSAL": ["salinity_raw", "salinity_adjusted", "salinity_best", "salinity_qc", "salinity_adjusted_qc", "salinity_adjusted_error", "absolute_salinity"], "PRES": ["pressure_raw", "pressure_adjusted", "pressure_best", "pressure_qc", "pressure_adjusted_qc", "pressure_adjusted_error"]}
+    fields = {"TEMP": ["temperature_raw", "temperature_adjusted", "temperature_best", "temperature_qc", "temperature_adjusted_qc", "temperature_adjusted_error", "conservative_temperature"], "PSAL": ["salinity_raw", "salinity_adjusted", "salinity_best", "salinity_qc", "salinity_adjusted_qc", "salinity_adjusted_error", "absolute_salinity"], "PRES": ["pressure_raw", "pressure_adjusted", "pressure_best", "pressure_dbar", "pressure_qc", "pressure_adjusted_qc", "pressure_adjusted_error", "adjusted_pressure_error"]}
     for variable, variable_fields in fields.items():
         if variable != parameters[0]:
             assert all(row[field] is None for row in rows for field in variable_fields)

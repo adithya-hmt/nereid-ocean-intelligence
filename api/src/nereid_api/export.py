@@ -16,9 +16,21 @@ def _json(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
 
 
+def _numeric(value: object) -> float:
+    if not isinstance(value, (int, float, str)):
+        raise TypeError("export level coordinate must be numeric")
+    return float(value)
+
+
+def _vertical_sort_value(row: dict[str, object]) -> float:
+    """Use masked pressure when present, otherwise the retained depth coordinate."""
+    pressure = row.get("pressure_dbar")
+    return _numeric(pressure) if pressure is not None else _numeric(row["depth_m"])
+
+
 def build_evidence_zip(envelope: ResultEnvelope, rows: list[dict[str, object]], generated_at: datetime) -> bytes:
     """Build a stable ZIP for selected rows; generation time is supplied by the caller."""
-    ordered = sorted(rows, key=lambda row: (str(row.get("wmo", "")), int(str(row.get("cycle", 0))), str(row.get("timestamp", "")), float(str(row.get("pressure_dbar", 0)))))
+    ordered = sorted(rows, key=lambda row: (str(row.get("wmo", "")), int(str(row.get("cycle", 0))), str(row.get("timestamp", "")), _vertical_sort_value(row)))
     fields = sorted({key for row in ordered for key in row})
     csv_buffer = io.StringIO(newline="")
     writer = csv.DictWriter(csv_buffer, fieldnames=fields, extrasaction="ignore")

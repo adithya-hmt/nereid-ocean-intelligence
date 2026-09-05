@@ -1,3 +1,4 @@
+# ruff: noqa: I001
 # pyright: reportMissingImports=false
 import csv
 import io
@@ -78,6 +79,23 @@ def test_export_is_deterministic_and_source_faithful():
         assert "selected derivative" in archive.read("README.txt").decode()
 
 
+def test_export_sorts_masked_pressure_by_depth_without_coercing_none():
+    envelope = ResultEnvelope(
+        query_plan=QueryPlan(operation="get_profile", wmo="1902202", cycle=161, parameters=["TEMP"]),
+        data=[], chart_spec=[], provenance=[], qc_summary=QcSummary(retained=2, rejected=0), methods=[], assumptions=[], warnings=[],
+    )
+    rows = [
+        {"wmo": "1902202", "cycle": 161, "timestamp": "2023-03-30T20:40:02Z", "pressure_dbar": None, "depth_m": 10.0},
+        {"wmo": "1902202", "cycle": 161, "timestamp": "2023-03-30T20:40:02Z", "pressure_dbar": None, "depth_m": 2.0},
+    ]
+    payload = build_evidence_zip(envelope, rows, datetime(2026, 9, 5, tzinfo=UTC))
+    assert payload == build_evidence_zip(envelope, list(reversed(rows)), datetime(2026, 9, 5, tzinfo=UTC))
+    with ZipFile(io.BytesIO(payload)) as archive:
+        selected = list(csv.DictReader(io.StringIO(archive.read("selection.csv").decode())))
+        assert [row["depth_m"] for row in selected] == ["2.0", "10.0"]
+        assert all(row["pressure_dbar"] == "" for row in selected)
+
+
 def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
     from nereid_api.main import create_app
 
@@ -119,8 +137,9 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
             csv.DictReader(io.StringIO(archive.read("selection.csv").decode()))
         )
         assert [
-            (row["wmo"], float(row["pressure_dbar"])) for row in selected
-        ] == sorted((row["wmo"], float(row["pressure_dbar"])) for row in selected)
+            (row["wmo"], float(row["depth_m"])) for row in selected
+        ] == sorted((row["wmo"], float(row["depth_m"])) for row in selected)
+        assert all(row["pressure_dbar"] == "" for row in selected)
         assert {row["wmo"] for row in selected} == {"1900001"}
         assert {row["source_profile_index"] for row in selected} == {"0"}
         assert all(row["temperature_adjusted_qc"] not in {"3", "4"} for row in selected)

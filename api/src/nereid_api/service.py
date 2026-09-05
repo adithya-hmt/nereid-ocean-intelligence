@@ -40,7 +40,7 @@ def _mask_unrequested(rows: list[dict[str, Any]], parameters: Sequence[str], pol
     """Null every unrequested variable and derived values lacking their inputs' QC."""
     requested = set(parameters) or {"TEMP", "PSAL", "PRES"}
     fields = {
-        "PRES": ("pressure_raw", "pressure_adjusted", "pressure_best", "pressure_qc", "pressure_adjusted_qc", "pressure_adjusted_error"),
+        "PRES": ("pressure_raw", "pressure_adjusted", "pressure_best", "pressure_dbar", "pressure_qc", "pressure_adjusted_qc", "pressure_adjusted_error", "adjusted_pressure_error"),
         "TEMP": ("temperature_raw", "temperature_adjusted", "temperature_best", "temperature_qc", "temperature_adjusted_qc", "temperature_adjusted_error", "conservative_temperature"),
         "PSAL": ("salinity_raw", "salinity_adjusted", "salinity_best", "salinity_qc", "salinity_adjusted_qc", "salinity_adjusted_error", "absolute_salinity"),
     }
