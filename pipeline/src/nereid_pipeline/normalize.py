@@ -1,10 +1,10 @@
+# pyright: reportMissingImports=false
 """Normalize ARGO profile NetCDF files into reproducible Parquet tables."""
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from datetime import datetime
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -91,8 +91,10 @@ def normalize_profile_file(source: Path, output_dir: Path, provenance: SourceMan
             longitude = _number(dataset["LONGITUDE"].values[profile_index])
             timestamp = _timestamp(dataset["JULD"].values[profile_index])
             data_mode = _text(dataset["DATA_MODE"].values[profile_index])
+            vertical_sampling_scheme = _text(dataset["VERTICAL_SAMPLING_SCHEME"].values[profile_index]) if "VERTICAL_SAMPLING_SCHEME" in dataset else "unspecified"
             profile_rows.append({
                 "wmo": wmo, "cycle": cycle, "direction": direction,
+                "source_profile_index": profile_index, "vertical_sampling_scheme": vertical_sampling_scheme,
                 "latitude": latitude, "longitude": longitude, "timestamp": timestamp,
                 "data_mode": data_mode, "source_url": provenance.source_url,
                 "snapshot_doi": provenance.snapshot_doi,
@@ -107,6 +109,7 @@ def normalize_profile_file(source: Path, output_dir: Path, provenance: SourceMan
                 salinity_adjusted = _number(dataset["PSAL_ADJUSTED"].values[profile_index, level_index])
                 level_rows.append({
                     "wmo": wmo, "cycle": cycle, "direction": direction,
+                    "source_profile_index": profile_index, "vertical_sampling_scheme": vertical_sampling_scheme,
                     "pressure_dbar": pressure,
                     "depth_m": float(-gsw.z_from_p(pressure, latitude)),
                     "temperature_raw": temp_raw, "temperature_adjusted": temp_adjusted,
@@ -123,13 +126,13 @@ def normalize_profile_file(source: Path, output_dir: Path, provenance: SourceMan
                     "data_mode": data_mode, "source_sha256": provenance.sha256,
                 })
 
-    profile_keys = [(row["wmo"], row["cycle"], row["direction"]) for row in profile_rows]
+    profile_keys = [(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) for row in profile_rows]
     if len(profile_keys) != len(set(profile_keys)):
-        raise ValueError("duplicate (wmo, cycle, direction) profile key")
+        raise ValueError("duplicate (wmo, cycle, direction, source_profile_index) profile key")
 
-    level_keys = [(row["wmo"], row["cycle"], row["direction"], row["pressure_dbar"]) for row in level_rows]
+    level_keys = [(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"], row["pressure_dbar"]) for row in level_rows]
     if len(level_keys) != len(set(level_keys)):
-        raise ValueError("duplicate (wmo, cycle, direction, pressure_dbar) level key")
+        raise ValueError("duplicate (wmo, cycle, direction, source_profile_index, pressure_dbar) level key")
 
     profiles = pa.Table.from_pylist(profile_rows)
     levels = pa.Table.from_pylist(level_rows)
@@ -139,6 +142,6 @@ def normalize_profile_file(source: Path, output_dir: Path, provenance: SourceMan
     _atomic_parquet(levels, output_dir / "levels.parquet")
     manifest_lines = []
     for row in profile_rows:
-        manifest_lines.append(json.dumps({**asdict(provenance), "fetched_at": provenance.fetched_at.isoformat(), **{key: row[key] for key in ("wmo", "cycle", "direction")}}, sort_keys=True, separators=(",", ":")))
+        manifest_lines.append(json.dumps({**asdict(provenance), "fetched_at": provenance.fetched_at.isoformat(), **{key: row[key] for key in ("wmo", "cycle", "direction", "source_profile_index")}}, sort_keys=True, separators=(",", ":")))
     _atomic_text("\n".join(manifest_lines) + "\n", output_dir / "manifest.jsonl")
     return NormalizationResult(profiles, levels, len(profile_rows), len(level_rows))

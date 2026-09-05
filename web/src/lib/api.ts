@@ -29,6 +29,13 @@ export async function interpretQuestion(question: string, signal?: AbortSignal):
   return response.json() as Promise<PlannerResponse>
 }
 
+export async function exportEvidence(result: ResultEnvelope): Promise<Blob> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? ''
+  const response = await fetch(`${baseUrl}/v1/export`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ envelope: result, rows: result.data, generated_at: new Date().toISOString() }) })
+  if (!response.ok) throw new ApiError(response.status, response.statusText)
+  return response.blob()
+}
+
 export async function executeQuery(plan: QueryPlan, signal?: AbortSignal): Promise<ResultEnvelope> {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? ''
   const response = await fetch(`${baseUrl}/v1/query/execute`, {

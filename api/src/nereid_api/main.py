@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
+import os
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from nereid_api.export import build_evidence_zip
 from nereid_api.models import QcPolicy, QueryPlan, ResultEnvelope, SectionRequest
 from nereid_api.planner import (
     AzurePlanner,
@@ -28,6 +31,12 @@ class PlanResponse(BaseModel):
     plan: QueryPlan | None
     planner: Literal["azure", "explicit"]
     warnings: list[str]
+
+
+class ExportRequest(BaseModel):
+    envelope: ResultEnvelope
+    rows: list[dict[str, object]]
+    generated_at: datetime
 
 
 def create_app(
@@ -85,6 +94,14 @@ def create_app(
             raise HTTPException(status_code=503, detail="ARGO snapshot is unavailable")
         return service.derive_section(request)
 
+    @app.post("/v1/export")
+    def export(request: ExportRequest) -> Response:
+        return Response(
+            build_evidence_zip(request.envelope, request.rows, request.generated_at),
+            media_type="application/zip",
+            headers={"Content-Disposition": "attachment; filename=nereid-evidence.zip"},
+        )
+
     @app.get("/v1/profiles/{wmo}/{cycle}", response_model=ResultEnvelope)
     def get_profile(
         wmo: str,
@@ -97,3 +114,11 @@ def create_app(
         return service.execute(plan)  # nosec B608: QueryPlan is validated; store binds every value.
 
     return app
+
+
+def create_offline_app() -> FastAPI:
+    """Start the pinned local replay snapshot for browser acceptance tests."""
+    return create_app(
+        Path(os.environ["NEREID_SNAPSHOT_DIR"]),
+        web_origin=os.environ.get("NEREID_WEB_ORIGIN"),
+    )

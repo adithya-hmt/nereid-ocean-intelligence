@@ -19,7 +19,7 @@ _FIND_SQL = """
     SELECT l.*, p.latitude, p.longitude, p.timestamp, p.source_url,
            p.snapshot_doi, p.fetched_at
     FROM levels AS l
-    INNER JOIN profiles AS p USING (wmo, cycle, direction)
+    INNER JOIN profiles AS p USING (wmo, cycle, direction, source_profile_index)
     WHERE p.longitude BETWEEN ? AND ?
       AND p.latitude BETWEEN ? AND ?
       AND CAST(p.timestamp AS DATE) BETWEEN ? AND ?
@@ -33,7 +33,7 @@ _PROFILE_SQL = """
     SELECT l.*, p.latitude, p.longitude, p.timestamp, p.source_url,
            p.snapshot_doi, p.fetched_at
     FROM levels AS l
-    INNER JOIN profiles AS p USING (wmo, cycle, direction)
+    INNER JOIN profiles AS p USING (wmo, cycle, direction, source_profile_index)
     WHERE l.wmo = ? AND l.cycle = ?
       AND (l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2))
       AND (l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))
@@ -42,7 +42,7 @@ _PROFILE_SQL = """
 
 _CANDIDATE_COUNT_SQL = """
     SELECT count(*) AS row_count FROM levels AS l
-    INNER JOIN profiles AS p USING (wmo, cycle, direction)
+    INNER JOIN profiles AS p USING (wmo, cycle, direction, source_profile_index)
     WHERE p.longitude BETWEEN ? AND ?
       AND p.latitude BETWEEN ? AND ?
       AND CAST(p.timestamp AS DATE) BETWEEN ? AND ?
@@ -50,7 +50,7 @@ _CANDIDATE_COUNT_SQL = """
 
 _ELIGIBLE_COUNT_SQL = """
     SELECT count(*) AS row_count FROM levels AS l
-    INNER JOIN profiles AS p USING (wmo, cycle, direction)
+    INNER JOIN profiles AS p USING (wmo, cycle, direction, source_profile_index)
     WHERE p.longitude BETWEEN ? AND ?
       AND p.latitude BETWEEN ? AND ?
       AND CAST(p.timestamp AS DATE) BETWEEN ? AND ?
@@ -85,7 +85,9 @@ class ArgoStore:
         self.connection.read_parquet(str(levels_path)).create_view("levels")
 
     def _rows(self, sql: str, values: list[Any]) -> list[dict[str, Any]]:
-        cursor = self.connection.execute(sql, values)  # nosec B608: callers use fixed SQL templates with bound values.
+        if sql not in {_FIND_SQL, _PROFILE_SQL, _CANDIDATE_COUNT_SQL, _ELIGIBLE_COUNT_SQL, _PROFILE_CANDIDATE_COUNT_SQL}:
+            raise ValueError("query must be a fixed store template")
+        cursor = self.connection.execute(sql, values)  # noqa: S608  # nosec B608
         columns = [column[0] for column in cursor.description]
         return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
 

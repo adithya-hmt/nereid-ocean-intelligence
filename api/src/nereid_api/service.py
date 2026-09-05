@@ -47,11 +47,11 @@ def _provenance(rows: list[dict[str, Any]]) -> list[Provenance]:
 
 
 def _profile_metrics(rows: list[dict[str, Any]], policy: QcPolicy) -> list[dict[str, JsonValue]]:
-    grouped: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+    grouped: dict[tuple[str, int, int], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        grouped[(row["wmo"], row["cycle"])].append(row)
+        grouped[(row["wmo"], row["cycle"], row["source_profile_index"])].append(row)
     metrics: list[dict[str, Any]] = []
-    for (wmo, cycle), levels in grouped.items():
+    for (wmo, cycle, source_profile_index), levels in grouped.items():
         first = levels[0]
         temperature = ObservationSeries(
             raw_values=[row["temperature_raw"] for row in levels],
@@ -83,7 +83,7 @@ def _profile_metrics(rows: list[dict[str, Any]], policy: QcPolicy) -> list[dict[
                 metrics.append(
                     cast(
                         dict[str, JsonValue],
-                        {"wmo": wmo, "cycle": cycle, **metric.model_dump(mode="json")},
+                        {"wmo": wmo, "cycle": cycle, "source_profile_index": source_profile_index, **metric.model_dump(mode="json")},
                     )
                 )
     return metrics
@@ -133,6 +133,11 @@ class InvestigationService:
             if eligible_count > len(rows)
             else []
         )
+        schemes = {(row["wmo"], row["cycle"]): set() for row in rows}
+        for row in rows:
+            schemes[(row["wmo"], row["cycle"])].add(row["vertical_sampling_scheme"])
+        if any(len(values) > 1 for values in schemes.values()):
+            warnings.append("A selected cycle contains multiple ARGO vertical sampling schemes; representations remain separate.")
         return ResultEnvelope(
             query_plan=plan,
             data=data,
@@ -146,10 +151,10 @@ class InvestigationService:
                 MethodRecord(
                     name="duckdb_parameterized_profile_query",
                     version="1",
-                    parameters={"qc_policy": plan.qc_mode, "row_limit": plan.row_limit},
+                    parameters={"qc_policy": plan.qc_mode, "row_limit": plan.row_limit, "source_representations": "preserved by source_profile_index"},
                 )
             ],
-            assumptions=[],
+            assumptions=["Pressure levels are retained per source representation; any analysis ordering is deterministic and does not alter QC flags."] if any(len(values) > 1 for values in schemes.values()) else [],
             warnings=warnings,
         )
 

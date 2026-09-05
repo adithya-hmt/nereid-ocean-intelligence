@@ -1,8 +1,6 @@
 import hashlib
 from datetime import datetime, timezone
 
-import pytest
-
 from nereid_pipeline.manifest import SourceManifest, sha256_file
 from nereid_pipeline.normalize import normalize_profile_file
 
@@ -22,7 +20,7 @@ def test_normalization_preserves_provenance_and_best_values(argo_nc, tmp_path, s
     assert levels["salinity_adjusted_error"].tolist() == [0.001, 0.002, 0.003, 0.004, 0.005, 0.006]
 
 
-def test_normalization_rejects_duplicate_profile_key(argo_nc_with_duplicate_profile_key, tmp_path):
+def test_normalization_preserves_duplicate_cycle_representations(argo_nc_with_duplicate_profile_key, tmp_path):
     source = argo_nc_with_duplicate_profile_key
     provenance = SourceManifest(
         source_url="https://example.test/argo/R1900001_007_duplicate.nc",
@@ -31,8 +29,11 @@ def test_normalization_rejects_duplicate_profile_key(argo_nc_with_duplicate_prof
         sha256=sha256_file(source),
     )
 
-    with pytest.raises(ValueError, match=r"duplicate \(wmo, cycle, direction\) profile key"):
-        normalize_profile_file(source, tmp_path, provenance)
+    result = normalize_profile_file(source, tmp_path, provenance)
+
+    assert result.profile_count == 2
+    assert result.profiles["source_profile_index"].to_pylist() == [0, 1]
+    assert result.profiles["vertical_sampling_scheme"].to_pylist() == ["unspecified", "unspecified"]
 
 
 def test_normalization_is_idempotent(argo_nc, tmp_path, source_manifest):

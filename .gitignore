@@ -23,3 +23,6 @@ playwright-report/
 test-results/
 *.log
 .DS_Store
+!data/snapshots/
+!data/snapshots/indian-ocean-2023-03/
+!data/snapshots/indian-ocean-2023-03/**

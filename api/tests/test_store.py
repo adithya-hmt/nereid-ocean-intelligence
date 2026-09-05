@@ -1,5 +1,7 @@
 # ruff: noqa: I001
 # pyright: reportMissingImports=false
+from pathlib import Path
+
 import pytest
 
 from nereid_api.models import QcPolicy, QueryPlan
@@ -37,6 +39,15 @@ def test_find_profiles_applies_qc_bounds_and_limit(snapshot_dir):
     assert {row["temperature_adjusted_qc"] for row in exploratory_rows} == {1, 2}
     assert all(row["temperature_adjusted_qc"] not in {3, 4} for row in exploratory_rows)
     assert all(row["salinity_adjusted_qc"] not in {3, 4} for row in exploratory_rows)
+
+
+def test_committed_snapshot_keeps_each_source_representation_separate():
+    snapshot = Path(__file__).parents[2] / "data/snapshots/indian-ocean-2023-03"
+    rows = ArgoStore(snapshot).get_profile("2902388", 274, QcPolicy.RESEARCH)
+
+    assert {row["source_profile_index"] for row in rows} == {0, 1}
+    assert len({row["vertical_sampling_scheme"] for row in rows}) == 2
+    assert all(row["temperature_adjusted_qc"] not in {3, 4} for row in rows)
 
 
 def test_find_profiles_filters_all_scientific_variables_even_when_unrequested(snapshot_dir):
