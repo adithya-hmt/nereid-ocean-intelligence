@@ -43,6 +43,30 @@ def test_execute_returns_scientific_receipt(snapshot_dir):
     assert body["warnings"] == []
 
 
+def test_api_preserves_one_to_one_provenance_for_multi_file_snapshot(snapshot_dir):
+    client = TestClient(create_app(snapshot_dir))
+    response = client.post(
+        "/v1/query/execute",
+        json={
+            "operation": "find_profiles",
+            "bbox": [60, 0, 80, 20],
+            "start_date": "2023-03-01",
+            "end_date": "2023-03-31",
+            "parameters": ["TEMP", "PSAL"],
+            "qc_mode": "exploratory",
+        },
+    )
+
+    assert response.status_code == 200
+    expected_urls = {
+        "1900001": "https://example.test/a.nc",
+        "1900002": "https://example.test/b.nc",
+    }
+    rows = response.json()["data"]
+    assert {row["wmo"] for row in rows} == set(expected_urls)
+    assert all(row["source_url"] == expected_urls[row["wmo"]] for row in rows)
+
+
 def test_empty_result_is_a_successful_widening_suggestion(snapshot_dir):
     client = TestClient(create_app(snapshot_dir))
     response = client.post(

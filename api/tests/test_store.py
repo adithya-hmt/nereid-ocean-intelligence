@@ -52,6 +52,21 @@ def test_committed_snapshot_keeps_each_source_representation_separate():
     assert all(row["temperature_adjusted_qc"] not in {3, 4} for row in rows)
 
 
+def test_store_joins_valid_multi_file_snapshot_provenance_one_to_one(snapshot_dir):
+    store = ArgoStore(snapshot_dir)
+
+    rows = store.find_profiles(_plan(qc_mode="exploratory"))
+
+    expected = {
+        ("1900001", 7, 0): ("a" * 64, "https://example.test/a.nc"),
+        ("1900002", 8, 0): ("b" * 64, "https://example.test/b.nc"),
+    }
+    for row in rows:
+        assert (row["source_sha256"], row["source_url"]) == expected[
+            (row["wmo"], row["cycle"], row["source_profile_index"])
+        ]
+
+
 def test_find_profiles_filters_all_scientific_variables_even_when_unrequested(
     snapshot_dir,
 ):

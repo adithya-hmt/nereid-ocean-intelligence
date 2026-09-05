@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import gsw
 import numpy as np
+import pytest  # pyright: ignore[reportMissingImports]
 
 from nereid_pipeline.manifest import SourceManifest, sha256_file
 from nereid_pipeline.normalize import normalize_profile_file, normalize_profile_files
@@ -71,26 +72,56 @@ def test_normalization_preserves_duplicate_cycle_representations(
 
 
 def test_multi_file_normalization_is_deterministic(
-    argo_nc, argo_nc_with_duplicate_profile_key, tmp_path, source_manifest
+    argo_nc, argo_nc_second_identity, tmp_path, source_manifest
 ):
     second = SourceManifest(
         "https://example.test/second.nc",
         source_manifest.snapshot_doi,
         source_manifest.fetched_at,
-        sha256_file(argo_nc_with_duplicate_profile_key),
+        sha256_file(argo_nc_second_identity),
     )
     first = normalize_profile_files(
-        [(argo_nc, source_manifest), (argo_nc_with_duplicate_profile_key, second)],
+        [(argo_nc, source_manifest), (argo_nc_second_identity, second)],
         tmp_path,
     )
     first_manifest = (tmp_path / "manifest.jsonl").read_text()
     second_result = normalize_profile_files(
-        [(argo_nc_with_duplicate_profile_key, second), (argo_nc, source_manifest)],
+        [(argo_nc_second_identity, second), (argo_nc, source_manifest)],
         tmp_path,
     )
-    assert (first.profile_count, first.level_count) == (3, 18)
-    assert (second_result.profile_count, second_result.level_count) == (3, 18)
+    assert (first.profile_count, first.level_count) == (2, 12)
+    assert (second_result.profile_count, second_result.level_count) == (2, 12)
     assert first_manifest == (tmp_path / "manifest.jsonl").read_text()
+
+
+def test_multi_file_normalization_rejects_snapshot_identity_collision(
+    argo_nc, argo_nc_with_duplicate_profile_key, tmp_path, source_manifest
+):
+    second = SourceManifest(
+        "https://example.test/collision.nc",
+        source_manifest.snapshot_doi,
+        source_manifest.fetched_at,
+        sha256_file(argo_nc_with_duplicate_profile_key),
+    )
+    with pytest.raises(ValueError, match="source_profile_index"):
+        normalize_profile_files(
+            [(argo_nc, source_manifest), (argo_nc_with_duplicate_profile_key, second)],
+            tmp_path,
+        )
+
+
+def test_normalization_rejects_duplicate_raw_pressure_without_adjusted_pressure(
+    argo_nc_with_duplicate_raw_pressure, tmp_path
+):
+    source = argo_nc_with_duplicate_raw_pressure
+    provenance = SourceManifest(
+        "https://example.test/duplicate-pressure.nc",
+        "10.1234/nereid.snapshot",
+        datetime(2023, 3, 16, tzinfo=timezone.utc),
+        sha256_file(source),
+    )
+    with pytest.raises(ValueError, match="duplicate normalized level pressure key"):
+        normalize_profile_file(source, tmp_path, provenance)
 
 
 def test_normalization_is_idempotent(argo_nc, tmp_path, source_manifest):

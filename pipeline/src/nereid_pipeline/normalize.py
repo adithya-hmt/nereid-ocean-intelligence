@@ -76,6 +76,10 @@ def _value(dataset: xr.Dataset, name: str, profile: int, level: int) -> float:
     return _number(dataset[name].values[profile, level]) if name in dataset else float("nan")
 
 
+def _qc_value(dataset: xr.Dataset, name: str, profile: int, level: int) -> int | None:
+    return _qc(dataset[name].values[profile, level]) if name in dataset else None
+
+
 def _collect(source: Path, provenance: SourceManifest) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if sha256_file(source) != provenance.sha256:
         raise ValueError("source checksum does not match provenance")
@@ -102,7 +106,7 @@ def _collect(source: Path, provenance: SourceManifest) -> tuple[list[dict[str, A
                 else:
                     absolute_salinity = None
                 conservative_temperature = float(gsw.CT_from_t(absolute_salinity, temp_adjusted, pressure_adjusted)) if absolute_salinity is not None and np.isfinite(temp_adjusted) else None
-                level_rows.append({**base, "pressure_raw": pressure_raw, "pressure_adjusted": pressure_adjusted, "pressure_best": pressure_best, "pressure_dbar": pressure_best, "pressure_qc": _qc(dataset["PRES_QC"].values[profile_index, level_index]), "pressure_adjusted_qc": _qc(dataset["PRES_ADJUSTED_QC"].values[profile_index, level_index]), "pressure_adjusted_error": _value(dataset, "PRES_ADJUSTED_ERROR", profile_index, level_index), "adjusted_pressure_error": _value(dataset, "PRES_ADJUSTED_ERROR", profile_index, level_index), "depth_m": _finite(float(-gsw.z_from_p(pressure_adjusted, latitude))) if np.isfinite(pressure_adjusted) and np.isfinite(latitude) else None, "temperature_raw": temp_raw, "temperature_adjusted": temp_adjusted, "temperature_best": _best(temp_raw, temp_adjusted), "temperature_qc": _qc(dataset["TEMP_QC"].values[profile_index, level_index]), "temperature_adjusted_qc": _qc(dataset["TEMP_ADJUSTED_QC"].values[profile_index, level_index]), "temperature_adjusted_error": _value(dataset, "TEMP_ADJUSTED_ERROR", profile_index, level_index), "salinity_raw": salinity_raw, "salinity_adjusted": salinity_adjusted, "salinity_best": _best(salinity_raw, salinity_adjusted), "salinity_qc": _qc(dataset["PSAL_QC"].values[profile_index, level_index]), "salinity_adjusted_qc": _qc(dataset["PSAL_ADJUSTED_QC"].values[profile_index, level_index]), "salinity_adjusted_error": _value(dataset, "PSAL_ADJUSTED_ERROR", profile_index, level_index), "absolute_salinity": absolute_salinity, "conservative_temperature": conservative_temperature, "data_mode": data_mode, "source_sha256": provenance.sha256})
+                level_rows.append({**base, "pressure_raw": pressure_raw, "pressure_adjusted": pressure_adjusted, "pressure_best": pressure_best, "pressure_dbar": pressure_best, "pressure_qc": _qc_value(dataset, "PRES_QC", profile_index, level_index), "pressure_adjusted_qc": _qc_value(dataset, "PRES_ADJUSTED_QC", profile_index, level_index), "pressure_adjusted_error": _value(dataset, "PRES_ADJUSTED_ERROR", profile_index, level_index), "adjusted_pressure_error": _value(dataset, "PRES_ADJUSTED_ERROR", profile_index, level_index), "depth_m": _finite(float(-gsw.z_from_p(pressure_adjusted, latitude))) if np.isfinite(pressure_adjusted) and np.isfinite(latitude) else None, "temperature_raw": temp_raw, "temperature_adjusted": temp_adjusted, "temperature_best": _best(temp_raw, temp_adjusted), "temperature_qc": _qc(dataset["TEMP_QC"].values[profile_index, level_index]), "temperature_adjusted_qc": _qc(dataset["TEMP_ADJUSTED_QC"].values[profile_index, level_index]), "temperature_adjusted_error": _value(dataset, "TEMP_ADJUSTED_ERROR", profile_index, level_index), "salinity_raw": salinity_raw, "salinity_adjusted": salinity_adjusted, "salinity_best": _best(salinity_raw, salinity_adjusted), "salinity_qc": _qc(dataset["PSAL_QC"].values[profile_index, level_index]), "salinity_adjusted_qc": _qc(dataset["PSAL_ADJUSTED_QC"].values[profile_index, level_index]), "salinity_adjusted_error": _value(dataset, "PSAL_ADJUSTED_ERROR", profile_index, level_index), "absolute_salinity": absolute_salinity, "conservative_temperature": conservative_temperature, "data_mode": data_mode, "source_sha256": provenance.sha256})
     return profile_rows, level_rows
 
 
@@ -115,10 +119,13 @@ def normalize_profile_files(inputs: Sequence[tuple[Path, SourceManifest]], outpu
         level_rows.extend(levels)
     profile_rows.sort(key=lambda row: (row["wmo"], row["cycle"], row["direction"], row["source_sha256"], row["source_profile_index"]))
     level_rows.sort(key=lambda row: (row["wmo"], row["cycle"], row["direction"], row["source_sha256"], row["source_profile_index"], row["pressure_adjusted"], row["pressure_best"]))
-    profile_keys = [(row["wmo"], row["cycle"], row["direction"], row["source_sha256"], row["source_profile_index"]) for row in profile_rows]
-    level_keys = [(*profile_keys[0:0], row["wmo"], row["cycle"], row["direction"], row["source_sha256"], row["source_profile_index"], row["pressure_adjusted"], row["pressure_best"]) for row in level_rows]
-    if len(profile_keys) != len(set(profile_keys)) or len(level_keys) != len(set(level_keys)):
-        raise ValueError("duplicate normalized profile or level key")
+    profile_keys = [(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) for row in profile_rows]
+    # Fill-value rows have no level identity. Never use NaN as part of a set key.
+    level_keys = [(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"], row["pressure_best"]) for row in level_rows if np.isfinite(row["pressure_best"])]
+    if len(profile_keys) != len(set(profile_keys)):
+        raise ValueError("duplicate (wmo, cycle, direction, source_profile_index) profile key")
+    if len(level_keys) != len(set(level_keys)):
+        raise ValueError("duplicate normalized level pressure key")
     profiles, levels = pa.Table.from_pylist(profile_rows), pa.Table.from_pylist(level_rows)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

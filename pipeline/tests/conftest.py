@@ -80,6 +80,18 @@ def argo_nc(tmp_path):
 
 
 @pytest.fixture
+def argo_nc_second_identity(argo_nc, tmp_path):
+    """A second source with an identity safe to combine in one snapshot."""
+    with xr.open_dataset(argo_nc) as source:
+        profile = source.load()
+    profile["PLATFORM_NUMBER"].values[0] = b"1900002"
+    profile["CYCLE_NUMBER"].values[0] = 8
+    path = tmp_path / "R1900002_008.nc"
+    profile.to_netcdf(path)
+    return path
+
+
+@pytest.fixture
 def argo_nc_with_duplicate_profile_key(argo_nc, tmp_path):
     """Synthetic test-only source with duplicate profile metadata and distinct levels."""
     with xr.open_dataset(argo_nc) as source:
@@ -89,6 +101,20 @@ def argo_nc_with_duplicate_profile_key(argo_nc, tmp_path):
     combined = xr.concat([profile, duplicate], dim="N_PROF")
     path = tmp_path / "R1900001_007_duplicate.nc"
     combined.to_netcdf(path)
+    return path
+
+
+@pytest.fixture
+def argo_nc_with_duplicate_raw_pressure(argo_nc, tmp_path):
+    """A test-only source with duplicate raw pressure and no adjusted pressure."""
+    with xr.open_dataset(argo_nc) as source:
+        profile = source.load()
+    profile["PRES"].values[0, 1] = profile["PRES"].values[0, 0]
+    profile = profile.drop_vars(
+        ["PRES_ADJUSTED", "PRES_ADJUSTED_QC", "PRES_ADJUSTED_ERROR"]
+    )
+    path = tmp_path / "R1900001_007_duplicate_pressure.nc"
+    profile.to_netcdf(path)
     return path
 
 
