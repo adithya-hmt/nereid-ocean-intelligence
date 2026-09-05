@@ -35,9 +35,9 @@ Run on 2026-09-05 after R6 native-gap remediation:
 
 ```bash
 uv run --directory pipeline pytest -q  # passed: 7 tests (186 warnings)
-uv run --directory api pytest -q             # passed: 75 tests (2 warnings)
+uv run --directory api pytest -q             # passed: 84 tests (2 warnings)
 npm --prefix web test -- --run src/components/InvestigationWorkspace.test.tsx  # passed: 1 file / 8 tests
-npm --prefix web test -- --run                           # passed: 8 files / 21 tests
+npm --prefix web test -- --run                           # passed: 8 files / 22 tests
 npm --prefix web run lint                                 # passed
 npm --prefix web run build                                # passed
 cd web && npx playwright test                 # passed: 2 tests
