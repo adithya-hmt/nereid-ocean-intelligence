@@ -112,15 +112,23 @@ def normalize_profile_file(source: Path, output_dir: Path, provenance: SourceMan
                     "temperature_raw": temp_raw, "temperature_adjusted": temp_adjusted,
                     "temperature_best": _best(temp_raw, temp_adjusted),
                     "temperature_qc": _qc(dataset["TEMP_QC"].values[profile_index, level_index]),
+                    "temperature_adjusted_qc": _qc(dataset["TEMP_ADJUSTED_QC"].values[profile_index, level_index]),
+                    "temperature_adjusted_error": _number(dataset["TEMP_ADJUSTED_ERROR"].values[profile_index, level_index]),
                     "salinity_raw": salinity_raw, "salinity_adjusted": salinity_adjusted,
                     "salinity_best": _best(salinity_raw, salinity_adjusted),
                     "salinity_qc": _qc(dataset["PSAL_QC"].values[profile_index, level_index]),
+                    "salinity_adjusted_qc": _qc(dataset["PSAL_ADJUSTED_QC"].values[profile_index, level_index]),
+                    "salinity_adjusted_error": _number(dataset["PSAL_ADJUSTED_ERROR"].values[profile_index, level_index]),
                     "adjusted_pressure_error": _number(dataset["PRES_ADJUSTED_ERROR"].values[profile_index, level_index]),
                     "data_mode": data_mode, "source_sha256": provenance.sha256,
                 })
 
-    keys = [(row["wmo"], row["cycle"], row["direction"], row["pressure_dbar"]) for row in level_rows]
-    if len(keys) != len(set(keys)):
+    profile_keys = [(row["wmo"], row["cycle"], row["direction"]) for row in profile_rows]
+    if len(profile_keys) != len(set(profile_keys)):
+        raise ValueError("duplicate (wmo, cycle, direction) profile key")
+
+    level_keys = [(row["wmo"], row["cycle"], row["direction"], row["pressure_dbar"]) for row in level_rows]
+    if len(level_keys) != len(set(level_keys)):
         raise ValueError("duplicate (wmo, cycle, direction, pressure_dbar) level key")
 
     profiles = pa.Table.from_pylist(profile_rows)
