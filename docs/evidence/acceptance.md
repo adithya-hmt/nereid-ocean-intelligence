@@ -60,4 +60,4 @@ The full Playwright command runs the rendering test and therefore overwrites `re
 
 ## Fix round 3 verification
 
-The exact final gate rerun passed: pipeline/API each 37 tests, web 18 tests, lint, build, and ordinary Playwright 2 tests. GPU evidence was regenerated afterward. The current committed `rendering.json` records 57.867 R3F FPS for 100,000 points (initialization 64.7 ms). The actual evaluator exited 2: configuration-blocked, with no score measured; Task 8 remains blocked pending Azure >=27/30.
+The exact final gate rerun passed: pipeline/API each 37 tests, web 18 tests, lint, build, and ordinary Playwright 2 tests. GPU evidence was regenerated afterward. The current committed `rendering.json` records 58.433 R3F FPS for 100,000 points (initialization 110.7 ms). The actual evaluator exited 2: configuration-blocked, with no score measured; Task 8 remains blocked pending Azure >=27/30.
