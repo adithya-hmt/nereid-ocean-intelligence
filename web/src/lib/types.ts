@@ -20,7 +20,7 @@ export interface QueryPlan {
 export interface Provenance { source_url: string; snapshot_doi: string; fetched_at: string; sha256: string }
 export interface QcSummary { retained: number; rejected: number }
 export interface MethodRecord { name: string; version: string; parameters: Record<string, unknown> }
-export interface SectionRequest { profile_ids: [string, number][]; qc_mode: QcPolicy; depth_step_m: number; max_time_gap_hours: number; max_distance_km: number }
+export interface SectionRequest { profile_ids: Array<ProfileIdentifier & { source_profile_index: number }>; qc_mode: QcPolicy; depth_step_m: number; max_time_gap_hours: number; max_distance_km: number }
 export interface ResultEnvelope {
   query_plan: QueryPlan
   data: Record<string, unknown>[]

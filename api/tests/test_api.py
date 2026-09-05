@@ -1,5 +1,6 @@
 # ruff: noqa: I001
 # pyright: reportMissingImports=false
+import pytest
 from fastapi.testclient import TestClient
 
 from nereid_api.main import create_app
@@ -212,3 +213,54 @@ def test_missing_snapshot_returns_service_unavailable(tmp_path):
     response = client.get("/health")
 
     assert response.status_code == 503
+
+@pytest.mark.parametrize("operation", ["nearest_floats", "compare_profiles", "derive_section"])
+def test_execute_dispatches_every_advertised_operation(snapshot_dir, operation):
+    client = TestClient(create_app(snapshot_dir))
+    if operation == "nearest_floats":
+        payload = {"operation": operation, "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP"], "row_limit": 1}
+    else:
+        payload = {"operation": operation, "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}], "parameters": ["TEMP", "PSAL"]}
+    response = client.post("/v1/query/execute", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["query_plan"]["operation"] == operation
+    if operation == "derive_section":
+        assert body["section_request"]["profile_ids"] == payload["profile_ids"]
+        assert "section_cells" in body["data"][0]
+
+
+def test_exact_comparison_refuses_missing_or_qc_empty_representation(snapshot_dir):
+    client = TestClient(create_app(snapshot_dir))
+    payload = {"operation": "compare_profiles", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "missing", "cycle": 8, "source_profile_index": 0}], "parameters": ["TEMP"]}
+    response = client.post("/v1/query/execute", json=payload)
+    assert response.status_code == 422
+    assert "missing requested representation" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("parameters", [["TEMP"], ["PSAL"], ["PRES"], []])
+def test_parameter_specific_qc_and_masking(snapshot_dir, parameters):
+    client = TestClient(create_app(snapshot_dir))
+    response = client.post("/v1/query/execute", json={"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": parameters, "qc_mode": "exploratory"})
+    assert response.status_code == 200
+    rows = response.json()["data"]
+    assert all(row["pressure_adjusted_qc"] in {1, 2} for row in rows)
+    if parameters == ["TEMP"]:
+        assert all(row["temperature_adjusted_qc"] in {1, 2} for row in rows)
+        assert all(row["salinity_adjusted"] is None for row in rows if row["salinity_adjusted_qc"] is None)
+    if parameters == ["PSAL"]:
+        assert all(row["salinity_adjusted_qc"] in {1, 2} for row in rows)
+        assert all(row["temperature_adjusted"] is None for row in rows if row["temperature_adjusted_qc"] is None)
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31"},
+        {"operation": "nearest_floats", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31"},
+        {"operation": "get_profile", "wmo": "1900001", "cycle": 7},
+        {"operation": "compare_profiles", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}]},
+        {"operation": "derive_section", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}]},
+    ],
+)
+def test_operation_selector_matrix_accepts_each_valid_endpoint_form(snapshot_dir, payload):
+    assert TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload).status_code == 200

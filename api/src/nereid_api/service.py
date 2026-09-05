@@ -83,18 +83,16 @@ class InvestigationService:
     def __init__(self, store: ArgoStore):
         self.store = store
 
-    def execute(self, plan: QueryPlan) -> ResultEnvelope:
-        if plan.operation == "find_profiles":
-            rows, candidate_count, eligible_count = self.store.find_profiles(plan), self.store.count_candidates(plan), self.store.count_qc_eligible(plan)
-        elif plan.operation == "nearest_floats":
-            rows, candidate_count, eligible_count = self.store.nearest_floats(plan), self.store.count_candidates(plan), self.store.count_qc_eligible(plan)
-        elif plan.operation == "get_profile":
-            rows = self.store.get_profile(plan.wmo or "", plan.cycle or 0, plan)
-            candidate_count, eligible_count = self.store.count_profile_candidates(plan.wmo or "", plan.cycle or 0), len(rows)
-        else:  # compare_profiles and derive_section have exact profile IDs.
-            rows = self.store.compare_profiles(plan.profile_ids, plan)
-            identities = {(item.wmo, item.cycle, item.source_profile_index) for item in plan.profile_ids if item.source_profile_index is not None}
-            candidate_count, eligible_count = self.store.count_selected_candidates(plan, identities), self.store.count_selected_qc_eligible(plan, identities)
+    @staticmethod
+    def _require_exact_representations(plan: QueryPlan, rows: list[dict[str, Any]]) -> None:
+        requested = {(item.wmo, item.cycle, item.source_profile_index) for item in plan.profile_ids}
+        returned = {(row["wmo"], row["cycle"], row["source_profile_index"]) for row in rows}
+        missing = requested - returned
+        if missing:
+            names = ", ".join(f"{wmo}/{cycle}/{index}" for wmo, cycle, index in sorted(missing))
+            raise ValueError(f"insufficient or missing requested representation: {names}")
+
+    def _envelope(self, plan: QueryPlan, rows: list[dict[str, Any]], candidate_count: int, eligible_count: int) -> ResultEnvelope:
         rows = _mask_unrequested(rows, plan.parameters)
         data = [{key: _json_value(value) for key, value in row.items()} for row in rows]
         warnings = ["No matching profiles; widen one bounded filter."] if not rows else (["Results truncated to the requested row limit."] if plan.operation == "find_profiles" and eligible_count > len(rows) else [])
@@ -102,8 +100,25 @@ class InvestigationService:
             warnings = warnings + ["Nearest representations are ordered by squared geographic distance from the bounding-box center."]
         return ResultEnvelope(query_plan=plan, data=data, chart_spec=[{"profile_metrics": _profile_metrics(rows, plan.qc_mode) if rows else []}], provenance=_provenance(rows), qc_summary=QcSummary(retained=len(rows), rejected=max(candidate_count - eligible_count, 0)), methods=[MethodRecord(name="duckdb_parameterized_profile_query", version="1", parameters={"qc_policy": plan.qc_mode, "parameters": plan.parameters or ["TEMP", "PSAL", "PRES"], "row_limit": plan.row_limit, "nearest_order": "bbox_center_distance" if plan.operation == "nearest_floats" else "not_applicable"})], assumptions=[], warnings=warnings)
 
+    def run_plan(self, plan: QueryPlan) -> ResultEnvelope:
+        if plan.operation == "derive_section":
+            return self.derive_section(SectionRequest(profile_ids=plan.profile_ids, qc_mode=plan.qc_mode), plan)
+        if plan.operation == "find_profiles":
+            rows, candidate_count, eligible_count = self.store.find_profiles(plan), self.store.count_candidates(plan), self.store.count_qc_eligible(plan)
+        elif plan.operation == "nearest_floats":
+            rows, candidate_count, eligible_count = self.store.nearest_floats(plan), self.store.count_candidates(plan), self.store.count_qc_eligible(plan)
+        elif plan.operation == "get_profile":
+            rows = self.store.get_profile(plan.wmo or "", plan.cycle or 0, plan)
+            candidate_count, eligible_count = self.store.count_profile_candidates(plan.wmo or "", plan.cycle or 0), len(rows)
+        else:  # compare_profiles has exact profile IDs.
+            rows = self.store.compare_profiles(plan.profile_ids, plan)
+            self._require_exact_representations(plan, rows)
+            identities = {(item.wmo, item.cycle, item.source_profile_index) for item in plan.profile_ids if item.source_profile_index is not None}
+            candidate_count, eligible_count = self.store.count_selected_candidates(plan, identities), self.store.count_selected_qc_eligible(plan, identities)
+        return self._envelope(plan, rows, candidate_count, eligible_count)
+
     def export_selection(self, plan: QueryPlan, selections: list[dict[str, Any]]) -> ResultEnvelope:
-        envelope = self.execute(plan)
+        envelope = self.run_plan(plan)
         requested = {(item["wmo"], item["cycle"], item["source_profile_index"]) for item in selections}
         if len(requested) != len(selections):
             raise ValueError("export selections must be unique")
@@ -115,9 +130,12 @@ class InvestigationService:
         eligible_count = self.store.count_selected_qc_eligible(plan, requested)
         return envelope.model_copy(update={"data": rows, "provenance": _provenance(rows), "qc_summary": QcSummary(retained=len(rows), rejected=max(candidate_count - eligible_count, 0))})
 
-    def derive_section(self, request: SectionRequest) -> ResultEnvelope:
-        plan = QueryPlan(operation="derive_section", profile_ids=request.profile_ids, parameters=["TEMP", "PSAL"], qc_mode=request.qc_mode)
-        envelope = self.execute(plan)
+    def derive_section(self, request: SectionRequest, query_plan: QueryPlan | None = None) -> ResultEnvelope:
+        plan = query_plan or QueryPlan(operation="derive_section", profile_ids=request.profile_ids, parameters=["TEMP", "PSAL"], qc_mode=request.qc_mode)
+        rows = self.store.compare_profiles(request.profile_ids, plan)
+        self._require_exact_representations(plan, rows)
+        identities = {(item.wmo, item.cycle, item.source_profile_index) for item in request.profile_ids if item.source_profile_index is not None}
+        envelope = self._envelope(plan, rows, self.store.count_selected_candidates(plan, identities), self.store.count_selected_qc_eligible(plan, identities))
         grouped: dict[tuple[str, int, int], list[dict[str, Any]]] = defaultdict(list)
         for row in envelope.data:
             grouped[(row["wmo"], row["cycle"], row["source_profile_index"])].append(row)

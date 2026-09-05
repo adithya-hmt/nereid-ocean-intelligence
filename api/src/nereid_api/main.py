@@ -90,7 +90,7 @@ def create_app(
         if service is None:
             raise HTTPException(status_code=503, detail="ARGO snapshot is unavailable")
         try:
-            return service.execute(plan)  # nosec B608: QueryPlan is validated; store binds every value.
+            return service.run_plan(plan)  # nosec B608: QueryPlan is validated; store binds every value.
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
@@ -98,7 +98,10 @@ def create_app(
     def derive_section(request: SectionRequest) -> ResultEnvelope:
         if service is None:
             raise HTTPException(status_code=503, detail="ARGO snapshot is unavailable")
-        return service.derive_section(request)
+        try:
+            return service.derive_section(request)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
     @app.post("/v1/export")
     def export(request: ExportRequest) -> Response:
@@ -123,7 +126,7 @@ def create_app(
         if service is None:
             raise HTTPException(status_code=503, detail="ARGO snapshot is unavailable")
         plan = QueryPlan(operation="get_profile", wmo=wmo, cycle=cycle, qc_mode=qc_mode)
-        return service.execute(plan)  # nosec B608: QueryPlan is validated; store binds every value.
+        return service.run_plan(plan)  # nosec B608: QueryPlan is validated; store binds every value.
 
     return app
 
