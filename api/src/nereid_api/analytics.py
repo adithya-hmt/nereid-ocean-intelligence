@@ -17,20 +17,35 @@ _RESEARCH_LABEL = "Research: adjusted observations with adjusted QC=1"
 _EXPLORATORY_LABEL = "Exploratory: adjusted observations with adjusted QC=1 or 2"
 
 
-def _policy_levels(profile: ProfileSeries, observations: DerivedObservationSeries, policy: QcPolicy) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-    """Select finite TEOS-10 values whose pressure and source variable pass policy."""
+def _allowed_levels(profile: ProfileSeries, observations: DerivedObservationSeries, policy: QcPolicy, dependency: DerivedObservationSeries | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return native observations sorted by depth, retaining invalid-level adjacency."""
     allowed_qc = {1} if policy is QcPolicy.RESEARCH else {1, 2}
+    depths = np.asarray(profile.depth_m, dtype=float)
     values = np.asarray(observations.values, dtype=float)
+    errors = np.asarray(observations.adjusted_errors, dtype=float)
     variable_qc = np.asarray(observations.adjusted_qc, dtype=object)
     pressure_qc = np.asarray(profile.pressure_adjusted_qc, dtype=object)
-    allowed = np.fromiter((value in allowed_qc and pressure in allowed_qc for value, pressure in zip(variable_qc, pressure_qc, strict=True)), dtype=bool)
-    return _valid_sorted_levels(np.asarray(profile.depth_m)[allowed], values[allowed], np.asarray(observations.adjusted_errors, dtype=float)[allowed])
+    valid = np.isfinite(depths) & np.isfinite(values)
+    valid &= np.fromiter((variable in allowed_qc and pressure in allowed_qc for variable, pressure in zip(variable_qc, pressure_qc, strict=True)), dtype=bool)
+    if dependency is not None:
+        dependency_qc = np.asarray(dependency.adjusted_qc, dtype=object)
+        valid &= np.fromiter((item in allowed_qc for item in dependency_qc), dtype=bool)
+    # A duplicate native depth is one level; an invalid duplicate makes that depth a break.
+    order = np.argsort(depths, kind="stable")
+    depths, values, errors, valid = depths[order], values[order], errors[order], valid[order]
+    unique_depths, starts = np.unique(depths, return_index=True)
+    selected = np.empty(len(starts), dtype=int)
+    retained_valid = np.zeros(len(starts), dtype=bool)
+    for index, start in enumerate(starts):
+        stop = starts[index + 1] if index + 1 < len(starts) else len(depths)
+        group_valid = valid[start:stop]
+        retained_valid[index] = group_valid.all()
+        selected[index] = start + np.argmax(group_valid) if retained_valid[index] else start
+    return unique_depths, values[selected], errors[selected], retained_valid
 
 
 def _valid_sorted_levels(depth_m: Sequence[float], values: Sequence[float], errors: Sequence[float]) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     depths, measurements, measurement_errors = np.asarray(depth_m, dtype=float), np.asarray(values, dtype=float), np.asarray(errors, dtype=float)
-    if depths.ndim != 1 or measurements.ndim != 1 or len(depths) != len(measurements):
-        return None
     finite = np.isfinite(depths) & np.isfinite(measurements)
     depths, measurements, measurement_errors = depths[finite], measurements[finite], measurement_errors[finite]
     order = np.argsort(depths)
@@ -47,20 +62,19 @@ def _quality_label(policy: QcPolicy) -> str:
 
 
 def _error_parameters(errors: np.ndarray) -> dict[str, float | int | None]:
-    finite = errors[np.isfinite(errors)]
-    return {"adjusted_error_available_count": int(len(finite)), "adjusted_error_max": float(finite.max()) if len(finite) else None}
+    finite = errors[np.isfinite(errors) & (errors >= 0)]
+    return {"adjusted_error_available_count": len(finite), "adjusted_error_max": float(finite.max()) if len(finite) else None}
 
 
 def principal_thermocline(profile: ProfileSeries, policy: QcPolicy) -> DerivedMetric | None:
-    """Use the strongest negative least-squares CT slope over three native levels."""
-    levels = _policy_levels(profile, profile.conservative_temperature, policy)
-    if levels is None:
+    """Use the strongest negative least-squares CT slope over contiguous native levels."""
+    depths, temperatures, errors, valid = _allowed_levels(profile, profile.conservative_temperature, policy, profile.absolute_salinity)
+    if valid.sum() < _MINIMUM_LEVELS or depths[valid][-1] - depths[valid][0] < _MINIMUM_VERTICAL_SPAN_M:
         return None
-    depths, temperatures, errors = levels
     candidates: list[tuple[float, int]] = []
     for index in range(len(depths) - 2):
         window_depths, window_temperatures = depths[index:index + 3], temperatures[index:index + 3]
-        if window_depths[0] < 10 or window_depths[-1] > 500:
+        if not valid[index:index + 3].all() or window_depths[0] < 10 or window_depths[-1] > 500:
             continue
         slope = float(np.polyfit(window_depths, window_temperatures, 1)[0])
         if slope < 0:
@@ -74,7 +88,8 @@ def principal_thermocline(profile: ProfileSeries, policy: QcPolicy) -> DerivedMe
 
 def strongest_salinity_gradient(profile: ProfileSeries, policy: QcPolicy) -> DerivedMetric | None:
     """Find the largest signed Absolute Salinity gradient allowed by QC policy."""
-    levels = _policy_levels(profile, profile.absolute_salinity, policy)
+    depths, salinities, errors, valid = _allowed_levels(profile, profile.absolute_salinity, policy)
+    levels = _valid_sorted_levels(depths[valid], salinities[valid], errors[valid])
     if levels is None:
         return None
     depths, salinities, errors = levels

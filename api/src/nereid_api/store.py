@@ -24,8 +24,9 @@ AND (NOT ? OR l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))"
 _FIND_SQL = f"SELECT l.*, p.latitude, p.longitude, p.timestamp, p.source_url, p.snapshot_doi, p.fetched_at {_JOIN} WHERE {_GEO} AND {_QC} ORDER BY p.timestamp, l.wmo, l.cycle, l.source_profile_index, l.pressure_dbar LIMIT ?"
 _GEO_COUNT_SQL = f"SELECT count(*) AS row_count {_JOIN} WHERE {_GEO}"
 _GEO_ELIGIBLE_SQL = f"SELECT count(*) AS row_count {_JOIN} WHERE {_GEO} AND {_QC}"
-_PROFILE_SQL = f"SELECT l.*, p.latitude, p.longitude, p.timestamp, p.source_url, p.snapshot_doi, p.fetched_at {_JOIN} WHERE l.wmo = ? AND l.cycle = ? AND {_QC} ORDER BY p.timestamp, l.source_profile_index, l.pressure_dbar"
+_PROFILE_SQL = f"SELECT l.*, p.latitude, p.longitude, p.timestamp, p.source_url, p.snapshot_doi, p.fetched_at {_JOIN} WHERE l.wmo = ? AND l.cycle = ? AND {_QC} ORDER BY p.timestamp, l.source_profile_index, l.pressure_dbar LIMIT ?"
 _PROFILE_COUNT_SQL = "SELECT count(*) AS row_count FROM levels WHERE wmo = ? AND cycle = ?"
+_PROFILE_ELIGIBLE_SQL = f"SELECT count(*) AS row_count {_JOIN} WHERE l.wmo = ? AND l.cycle = ? AND {_QC}"
 _SELECTED_SQL = f"SELECT l.*, p.latitude, p.longitude, p.timestamp, p.source_url, p.snapshot_doi, p.fetched_at {_JOIN} WHERE list_contains(?, struct_pack(wmo := l.wmo, cycle := l.cycle, source_profile_index := l.source_profile_index)) AND {_QC} ORDER BY p.timestamp, l.wmo, l.cycle, l.source_profile_index, l.pressure_dbar"
 _SELECTED_COUNT_SQL = "SELECT count(*) AS row_count FROM levels AS l WHERE list_contains(?, struct_pack(wmo := l.wmo, cycle := l.cycle, source_profile_index := l.source_profile_index))"
 _SELECTED_ELIGIBLE_SQL = """SELECT count(*) AS row_count FROM levels AS l
@@ -47,8 +48,9 @@ SELECT DISTINCT wmo, cycle, direction, source_profile_index FROM eligible
 ORDER BY min(center_distance) OVER (PARTITION BY wmo, cycle, direction, source_profile_index), wmo, cycle, source_profile_index LIMIT ?
 )
 SELECT eligible.* FROM eligible INNER JOIN selected USING (wmo, cycle, direction, source_profile_index)
-ORDER BY center_distance, timestamp, wmo, cycle, source_profile_index, pressure_dbar"""
-_TEMPLATES = {_FIND_SQL, _GEO_COUNT_SQL, _GEO_ELIGIBLE_SQL, _PROFILE_SQL, _PROFILE_COUNT_SQL, _SELECTED_SQL, _SELECTED_COUNT_SQL, _SELECTED_ELIGIBLE_SQL, _NEAREST_SQL}
+ORDER BY center_distance, timestamp, wmo, cycle, source_profile_index, pressure_dbar
+LIMIT ?"""
+_TEMPLATES = {_FIND_SQL, _GEO_COUNT_SQL, _GEO_ELIGIBLE_SQL, _PROFILE_SQL, _PROFILE_COUNT_SQL, _PROFILE_ELIGIBLE_SQL, _SELECTED_SQL, _SELECTED_COUNT_SQL, _SELECTED_ELIGIBLE_SQL, _NEAREST_SQL}
 
 
 def _qc_values(plan: QueryPlan | QcPolicy, parameters: list[str] | None = None) -> list[bool]:
@@ -88,7 +90,7 @@ class ArgoStore:
     def nearest_floats(self, plan: QueryPlan) -> list[dict[str, Any]]:
         west, south, east, north = plan.bbox or (0, 0, 0, 0)
         center_lon, center_lat = (west + east) / 2, (south + north) / 2
-        return self._rows(_NEAREST_SQL, [center_lat, center_lat, center_lon, center_lon, *self._geo_values(plan), *_qc_values(plan), plan.row_limit])
+        return self._rows(_NEAREST_SQL, [center_lat, center_lat, center_lon, center_lon, *self._geo_values(plan), *_qc_values(plan), plan.row_limit, plan.row_limit])
 
     def count_candidates(self, plan: QueryPlan) -> int:
         rows = self._rows(_GEO_COUNT_SQL, self._geo_values(plan))
@@ -99,10 +101,13 @@ class ArgoStore:
         return int(rows[0]["row_count"])
 
     def get_profile(self, wmo: str, cycle: int, plan: QueryPlan | QcPolicy) -> list[dict[str, Any]]:
-        return self._rows(_PROFILE_SQL, [wmo, cycle, *_qc_values(plan)])
+        return self._rows(_PROFILE_SQL, [wmo, cycle, *_qc_values(plan), plan.row_limit if isinstance(plan, QueryPlan) else 10_000])
 
     def count_profile_candidates(self, wmo: str, cycle: int) -> int:
         return int(self._rows(_PROFILE_COUNT_SQL, [wmo, cycle])[0]["row_count"])
+
+    def count_profile_qc_eligible(self, wmo: str, cycle: int, plan: QueryPlan | QcPolicy) -> int:
+        return int(self._rows(_PROFILE_ELIGIBLE_SQL, [wmo, cycle, *_qc_values(plan)])[0]["row_count"])
 
     @staticmethod
     def _selected(ids: list[ProfileIdentifier] | set[tuple[str, int, int]]) -> list[dict[str, Any]]:

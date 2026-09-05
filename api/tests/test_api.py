@@ -244,7 +244,10 @@ def test_parameter_specific_qc_and_masking(snapshot_dir, parameters):
     response = client.post("/v1/query/execute", json={"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": parameters, "qc_mode": "exploratory"})
     assert response.status_code == 200
     rows = response.json()["data"]
-    assert all(row["pressure_adjusted_qc"] in {1, 2} for row in rows)
+    if parameters in (["PRES"], []):
+        assert all(row["pressure_adjusted_qc"] in {1, 2} for row in rows)
+    else:
+        assert all(row["pressure_adjusted_qc"] is None for row in rows)
     if parameters == ["TEMP"]:
         assert all(row["temperature_adjusted_qc"] in {1, 2} for row in rows)
         assert all(row["salinity_adjusted"] is None for row in rows if row["salinity_adjusted_qc"] is None)
@@ -281,6 +284,63 @@ def test_derive_uses_temp_and_salinity_research_policy_even_when_unrequested(sna
     response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload)
     assert response.status_code == 422
     assert "insufficient or missing requested representation" in response.json()["detail"]
+
+
+def test_temp_only_never_returns_ct_from_bad_salinity_qc(snapshot_dir):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    levels_path = snapshot_dir / "levels.parquet"
+    rows = pq.read_table(levels_path).to_pylist()
+    for row in rows:
+        if row["wmo"] == "1900001" and row["pressure_dbar"] in {0, 10, 60}:
+            row["salinity_adjusted_qc"] = 3
+    pq.write_table(pa.Table.from_pylist(rows), levels_path)
+    payload = {"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP"], "qc_mode": "research"}
+    response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload)
+    assert response.status_code == 200
+    assert all(row["conservative_temperature"] is None for row in response.json()["data"] if row["wmo"] == "1900001")
+
+
+@pytest.mark.parametrize("parameters", [["TEMP"], ["PSAL"], ["PRES"]])
+def test_unrequested_variables_are_completely_masked(snapshot_dir, parameters):
+    payload = {"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": parameters, "qc_mode": "exploratory"}
+    rows = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload).json()["data"]
+    fields = {"TEMP": ["temperature_raw", "temperature_adjusted", "temperature_best", "temperature_qc", "temperature_adjusted_qc", "temperature_adjusted_error", "conservative_temperature"], "PSAL": ["salinity_raw", "salinity_adjusted", "salinity_best", "salinity_qc", "salinity_adjusted_qc", "salinity_adjusted_error", "absolute_salinity"], "PRES": ["pressure_raw", "pressure_adjusted", "pressure_best", "pressure_qc", "pressure_adjusted_qc", "pressure_adjusted_error"]}
+    for variable, variable_fields in fields.items():
+        if variable != parameters[0]:
+            assert all(row[field] is None for row in rows for field in variable_fields)
+
+
+def test_requested_metric_gating_and_adjusted_error_warnings(snapshot_dir):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    levels_path = snapshot_dir / "levels.parquet"
+    rows = pq.read_table(levels_path).to_pylist()
+    rows[0]["temperature_adjusted_error"] = None
+    pq.write_table(pa.Table.from_pylist(rows), levels_path)
+    payload = {"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["PRES"], "qc_mode": "research"}
+    body = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload).json()
+    assert body["chart_spec"] == [{"profile_metrics": []}]
+    assert body["methods"][0]["parameters"]["adjusted_errors"]
+    assert not any("TEMP" in warning for warning in body["warnings"])
+
+
+@pytest.mark.parametrize("operation", ["get_profile", "nearest_floats"])
+def test_output_operations_apply_row_limit(snapshot_dir, operation):
+    payload = ({"operation": operation, "wmo": "1900001", "cycle": 7, "parameters": ["TEMP"], "row_limit": 1} if operation == "get_profile" else {"operation": operation, "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP"], "row_limit": 1})
+    response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload)
+    assert response.status_code == 200
+    assert len(response.json()["data"]) == 1
+
+
+@pytest.mark.parametrize("operation", ["compare_profiles", "derive_section"])
+def test_exact_operations_refuse_selection_above_row_limit(snapshot_dir, operation):
+    payload = {"operation": operation, "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0}], "parameters": ["TEMP", "PSAL"], "row_limit": 1}
+    response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload)
+    assert response.status_code == 422
+    assert response.json()["detail"] == "exact selection exceeds row_limit"
 
 
 def test_export_rejects_derive_section_plan_before_indexing_section_data(snapshot_dir):

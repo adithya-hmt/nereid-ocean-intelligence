@@ -101,3 +101,18 @@ def test_analytics_reject_insufficient_qc_filtered_levels():
     profile.conservative_temperature.adjusted_qc[-3] = 3
 
     assert principal_thermocline(profile, QcPolicy.RESEARCH) is None
+
+
+def test_thermocline_does_not_bridge_an_invalid_native_level():
+    profile = _profile()
+    profile.conservative_temperature.adjusted_qc[3] = 3
+    profile.conservative_temperature.adjusted_qc[-1] = 3
+
+    assert principal_thermocline(profile, QcPolicy.RESEARCH) is None
+
+
+def test_thermocline_requires_salinity_qc_for_conservative_temperature():
+    profile = _profile()
+    profile.absolute_salinity.adjusted_qc = [3] * len(DEPTHS)
+
+    assert principal_thermocline(profile, QcPolicy.RESEARCH) is None
