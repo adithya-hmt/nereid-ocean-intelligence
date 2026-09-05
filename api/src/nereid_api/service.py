@@ -246,8 +246,9 @@ class InvestigationService:
         scientific_plan = QueryPlan(
             operation="compare_profiles",
             profile_ids=request.profile_ids,
-            # CT needs practical salinity even for a temperature-only section.
-            parameters=["TEMP", "PSAL"],
+            # Conservative temperature needs practical salinity; salinity-only
+            # sections must not require unrelated temperature QC.
+            parameters=["TEMP", "PSAL"] if "TEMP" in requested else ["PSAL"],
             qc_mode=request.qc_mode,
             row_limit=plan.row_limit,
         )

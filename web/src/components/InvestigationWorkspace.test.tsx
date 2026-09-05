@@ -197,12 +197,24 @@ test('a stale planner cannot replace a later explicit execution', async () => {
   expect(screen.getByRole('button', { name: 'Interpret question' })).toBeDefined()
 })
 
-test('a direct section renders only the cross-section, not profile or trajectory fallbacks', () => {
+test('a PSAL-only section remains visible without temperature output', () => {
+  render(<CrossSectionPlot result={{ ...section, query_plan: { ...section.query_plan, operation: 'derive_section', parameters: ['PSAL'] }, section_request: { profile_ids: [{ wmo: '1900001', cycle: 7, direction: 'A', source_profile_index: 0 }, { wmo: '1900002', cycle: 8, direction: 'A', source_profile_index: 0 }], qc_mode: 'research', parameters: ['PSAL'], row_limit: 10000, depth_step_m: 10, max_time_gap_hours: 168, max_distance_km: 500, max_vertical_gap_m: 100 }, data: [{ ...section.data[0], section_cells: [{ left_profile_index: 0, right_profile_index: 1, depth_m: 10, temperature: null, salinity: 34.01 }] }] }} />)
+  expect(screen.getByRole('img', { name: 'Gap-masked salinity cross-section' })).toBeDefined()
+  expect(screen.getByRole('columnheader', { name: 'Salinity' })).toBeDefined()
+  expect(screen.queryByRole('columnheader', { name: 'Temperature' })).toBeNull()
+  expect(screen.getByRole('table', { name: 'Cross-section observations' }).textContent).toContain('34.010 g kg⁻¹')
+})
+
+test('a direct section renders its read-only receipt without profile or trajectory fallbacks', () => {
   render(<InvestigationWorkspace initialResult={{ ...section, query_plan: { ...section.query_plan, operation: 'derive_section', profile_ids: [{ wmo: '1900001', cycle: 7, direction: 'A', source_profile_index: 0 }, { wmo: '1900002', cycle: 8, direction: 'A', source_profile_index: 0 }] }, section_request: { profile_ids: [{ wmo: '1900001', cycle: 7, direction: 'A', source_profile_index: 0 }, { wmo: '1900002', cycle: 8, direction: 'A', source_profile_index: 0 }], qc_mode: 'research', parameters: ['TEMP', 'PSAL'], row_limit: 10000, depth_step_m: 10, max_time_gap_hours: 168, max_distance_km: 500, max_vertical_gap_m: 100 } }} />)
   expect(screen.getByRole('table', { name: 'Cross-section observations' })).toBeDefined()
   expect(screen.queryByText(/returned observations have no complete/)).toBeNull()
   expect(screen.queryByText('Derived cross-section')).toBeNull()
-  expect(screen.queryByText('Scientific receipt')).toBeNull()
+  expect(screen.getByText('Scientific receipt')).toBeDefined()
+  expect(screen.getByText('Sources')).toBeDefined()
+  expect(screen.getByText('Methods')).toBeDefined()
+  expect(screen.getByText('Assumptions & warnings')).toBeDefined()
+  expect(screen.queryByText('Select exact profile representations for linked views and evidence export')).toBeNull()
   expect(screen.queryByRole('button', { name: 'Download evidence ZIP' })).toBeNull()
 })
 

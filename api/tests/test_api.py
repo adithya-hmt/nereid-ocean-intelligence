@@ -375,7 +375,7 @@ def test_operation_selector_matrix_accepts_each_valid_endpoint_form(snapshot_dir
     assert TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload).status_code == 200
 
 @pytest.mark.parametrize("parameters", [["PRES"], ["TEMP"]])
-def test_derive_uses_temp_and_salinity_research_policy_even_when_unrequested(snapshot_dir, parameters):
+def test_derive_temperature_output_requires_salinity_for_conservative_temperature(snapshot_dir, parameters):
     import pyarrow as pa
     import pyarrow.parquet as pq
 
@@ -393,6 +393,27 @@ def test_derive_uses_temp_and_salinity_research_policy_even_when_unrequested(sna
         assert "derive_section supports TEMP and PSAL parameters only" in str(response.json()["detail"])
     else:
         assert "insufficient or missing requested representation" in response.json()["detail"]
+
+
+def test_derive_salinity_only_does_not_require_temperature_qc(snapshot_dir):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    levels_path = snapshot_dir / "levels.parquet"
+    rows = pq.read_table(levels_path).to_pylist()
+    for index, row in enumerate(rows):
+        row["pressure_adjusted_qc"] = 1
+        row["salinity_adjusted_qc"] = 1
+        row["temperature_adjusted_qc"] = 3 if index % 2 else 4
+    pq.write_table(pa.Table.from_pylist(rows), levels_path)
+    payload = {"profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}], "parameters": ["PSAL"], "qc_mode": "research", "max_time_gap_hours": 300}
+
+    response = TestClient(create_app(snapshot_dir)).post("/v1/sections/derive", json=payload)
+
+    assert response.status_code == 200, response.json()
+    cells = response.json()["data"][0]["section_cells"]
+    assert any(cell["salinity"] is not None for cell in cells)
+    assert all(cell["temperature"] is None for cell in cells)
 
 
 def test_temp_only_never_returns_ct_from_bad_salinity_qc(snapshot_dir):
