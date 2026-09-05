@@ -2,7 +2,7 @@
 # ruff: noqa: I001
 import pytest
 
-from nereid_api.models import DerivedObservationSeries, ProfileSeries, QueryPlan
+from nereid_api.models import DerivedObservationSeries, ProfileSeries, QueryPlan, SectionRequest
 
 
 def test_query_plan_rejects_unbounded_request():
@@ -28,6 +28,18 @@ def test_profile_requires_source_record_arrays_to_align_with_depths():
             pressure_adjusted_qc=[1, 1, 1],
             pressure_adjusted_errors=[0.1, 0.1, 0.1],
         )
+
+
+def test_section_parameters_are_canonical_and_exclude_pressure():
+    identifiers = [
+        {"wmo": "a", "cycle": 1, "direction": "A", "source_profile_index": 0},
+        {"wmo": "b", "cycle": 1, "direction": "A", "source_profile_index": 0},
+    ]
+    assert SectionRequest(profile_ids=identifiers, parameters=[]).parameters == ["TEMP", "PSAL"]
+    assert SectionRequest(profile_ids=identifiers, parameters=["TEMP"]).parameters == ["TEMP"]
+    assert SectionRequest(profile_ids=identifiers, parameters=["PSAL"]).parameters == ["PSAL"]
+    with pytest.raises(ValueError):
+        QueryPlan(operation="derive_section", profile_ids=identifiers, parameters=["PRES"])
 
 
 def test_query_plan_caps_rows():

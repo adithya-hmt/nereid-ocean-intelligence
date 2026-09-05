@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 Operation = Literal["find_profiles", "nearest_floats", "get_profile", "compare_profiles", "derive_section"]
 Parameter = Literal["TEMP", "PSAL", "PRES"]
+SectionParameter = Literal["TEMP", "PSAL"]
 
 
 class QcPolicy(StrEnum):
@@ -32,6 +33,7 @@ class SectionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     profile_ids: list[ProfileIdentifier] = Field(min_length=2, max_length=100)
     qc_mode: QcPolicy = QcPolicy.RESEARCH
+    parameters: list[SectionParameter] = Field(default_factory=lambda: ["TEMP", "PSAL"])
     depth_step_m: float = Field(default=10, ge=1, le=100)
     row_limit: int = Field(default=10_000, ge=1, le=100_000)
     max_time_gap_hours: float = Field(default=168, gt=0, le=24 * 31)
@@ -40,12 +42,20 @@ class SectionRequest(BaseModel):
 
     @model_validator(mode="after")
     def require_unique_representations(self) -> "SectionRequest":
+        if not self.parameters:
+            self.parameters = ["TEMP", "PSAL"]
+        if len(self.parameters) != len(set(self.parameters)):
+            raise ValueError("section parameters must be unique")
         identities = [(item.wmo, item.cycle, item.direction, item.source_profile_index) for item in self.profile_ids]
         if len(identities) != len(set(identities)):
             raise ValueError("profile_ids must be unique")
         if any(item.source_profile_index is None for item in self.profile_ids):
             raise ValueError("section profile_ids require source_profile_index")
         return self
+
+    @property
+    def effective_parameters(self) -> list[SectionParameter]:
+        return self.parameters or ["TEMP", "PSAL"]
 
 
 class QueryPlan(BaseModel):
@@ -86,6 +96,8 @@ class QueryPlan(BaseModel):
             if not complete_single_profile or geographic or self.profile_ids or self.float_count is not None:
                 raise ValueError("get_profile requires exactly wmo, cycle, and direction")
         else:
+            if self.operation == "derive_section" and "PRES" in self.parameters:
+                raise ValueError("derive_section supports TEMP and PSAL parameters only")
             identities = [(item.wmo, item.cycle, item.direction, item.source_profile_index) for item in self.profile_ids]
             if geographic or single_profile or self.float_count is not None or not (2 <= len(self.profile_ids) <= 100):
                 raise ValueError(f"{self.operation} requires 2–100 profile_ids only")

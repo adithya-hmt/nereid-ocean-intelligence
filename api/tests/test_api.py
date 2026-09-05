@@ -178,6 +178,7 @@ def test_section_masks_unsupported_gap(snapshot_dir):
     assert body["section_request"] == {
         "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}],
         "qc_mode": "exploratory",
+        "parameters": ["TEMP", "PSAL"],
         "depth_step_m": 5,
         "row_limit": 10000,
         "max_time_gap_hours": 24,
@@ -362,7 +363,10 @@ def test_derive_uses_temp_and_salinity_research_policy_even_when_unrequested(sna
     payload = {"operation": "derive_section", "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}], "parameters": parameters, "qc_mode": "research"}
     response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload)
     assert response.status_code == 422
-    assert "insufficient or missing requested representation" in response.json()["detail"]
+    if parameters == ["PRES"]:
+        assert "derive_section supports TEMP and PSAL parameters only" in str(response.json()["detail"])
+    else:
+        assert "insufficient or missing requested representation" in response.json()["detail"]
 
 
 def test_temp_only_never_returns_ct_from_bad_salinity_qc(snapshot_dir):

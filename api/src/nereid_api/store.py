@@ -34,7 +34,7 @@ WHERE list_contains(?, struct_pack(wmo := l.wmo, cycle := l.cycle, direction := 
 AND (l.pressure_adjusted_qc = 1 OR (? AND l.pressure_adjusted_qc = 2))
 AND (NOT ? OR l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2))
 AND (NOT ? OR l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))"""
-_NEAREST_SQL = """WITH eligible AS (
+_NEAREST_IDENTITIES_SQL = """WITH eligible AS (
 SELECT l.*, p.latitude, p.longitude, p.timestamp, p.source_url, p.snapshot_doi, p.fetched_at,
 2 * 6371.0088 * asin(sqrt(least(1.0, greatest(0.0,
   sin(radians(p.latitude - ?) / 2) * sin(radians(p.latitude - ?) / 2)
@@ -48,12 +48,13 @@ AND (l.pressure_adjusted_qc = 1 OR (? AND l.pressure_adjusted_qc = 2))
 AND (NOT ? OR l.temperature_adjusted_qc = 1 OR (? AND l.temperature_adjusted_qc = 2))
 AND (NOT ? OR l.salinity_adjusted_qc = 1 OR (? AND l.salinity_adjusted_qc = 2))
 ), selected AS (
-SELECT DISTINCT wmo, cycle, direction, source_profile_index FROM eligible
-ORDER BY min(center_distance) OVER (PARTITION BY wmo, cycle, direction, source_profile_index), wmo, cycle, direction, source_profile_index LIMIT ?
+SELECT wmo, cycle, direction, source_profile_index, min(center_distance) AS center_distance
+FROM eligible GROUP BY wmo, cycle, direction, source_profile_index
+ORDER BY center_distance, wmo, cycle, direction, source_profile_index LIMIT ?
 )
-SELECT eligible.* FROM eligible INNER JOIN selected USING (wmo, cycle, direction, source_profile_index)
-ORDER BY center_distance, timestamp, wmo, cycle, direction, source_profile_index, pressure_dbar"""
-_TEMPLATES = {_FIND_SQL, _GEO_COUNT_SQL, _GEO_ELIGIBLE_SQL, _PROFILE_SQL, _PROFILE_COUNT_SQL, _PROFILE_ELIGIBLE_SQL, _SELECTED_SQL, _SELECTED_COUNT_SQL, _SELECTED_ELIGIBLE_SQL, _NEAREST_SQL}
+SELECT wmo, cycle, direction, source_profile_index FROM selected
+ORDER BY center_distance, wmo, cycle, direction, source_profile_index"""
+_TEMPLATES = {_FIND_SQL, _GEO_COUNT_SQL, _GEO_ELIGIBLE_SQL, _PROFILE_SQL, _PROFILE_COUNT_SQL, _PROFILE_ELIGIBLE_SQL, _SELECTED_SQL, _SELECTED_COUNT_SQL, _SELECTED_ELIGIBLE_SQL, _NEAREST_IDENTITIES_SQL}
 
 
 def _qc_values(plan: QueryPlan | QcPolicy, parameters: list[str] | None = None) -> list[bool]:
@@ -90,10 +91,20 @@ class ArgoStore:
     def find_profiles(self, plan: QueryPlan) -> list[dict[str, Any]]:
         return self._rows(_FIND_SQL, [*self._geo_values(plan), *_qc_values(plan), plan.row_limit])
 
-    def nearest_floats(self, plan: QueryPlan) -> list[dict[str, Any]]:
+    def nearest_identities(self, plan: QueryPlan) -> list[tuple[str, int, str, int]]:
+        """Bound exact representations before materializing any level rows."""
         west, south, east, north = plan.bbox or (0, 0, 0, 0)
         center_lon, center_lat = (west + east) / 2, (south + north) / 2
-        return self._rows(_NEAREST_SQL, [center_lat, center_lat, center_lat, center_lon, center_lon, *self._geo_values(plan), *_qc_values(plan), plan.float_count])
+        rows = self._rows(_NEAREST_IDENTITIES_SQL, [center_lat, center_lat, center_lat, center_lon, center_lon, *self._geo_values(plan), *_qc_values(plan), plan.float_count])
+        return [(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) for row in rows]
+
+    def nearest_floats(self, plan: QueryPlan) -> list[dict[str, Any]]:
+        identities = self.nearest_identities(plan)
+        if not identities:
+            return []
+        rows = self.compare_profiles([ProfileIdentifier(wmo=w, cycle=c, direction=d, source_profile_index=i) for w, c, d, i in identities], plan)
+        rank = {identity: index for index, identity in enumerate(identities)}
+        return sorted(rows, key=lambda row: (rank[(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"])], row["pressure_dbar"]))
 
     def count_candidates(self, plan: QueryPlan) -> int:
         rows = self._rows(_GEO_COUNT_SQL, self._geo_values(plan))

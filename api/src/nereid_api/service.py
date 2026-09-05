@@ -125,9 +125,10 @@ def _interpolate(levels: list[dict[str, Any]], depth_m: float, field: str, max_g
 
 
 _FIELD_UNITS = {
-    "pressure_raw": "dbar", "pressure_adjusted": "dbar", "pressure_best": "dbar", "pressure_dbar": "dbar", "depth_m": "m",
-    "temperature_raw": "degC", "temperature_adjusted": "degC", "temperature_best": "degC", "conservative_temperature": "degC",
-    "salinity_raw": "PSS-78 unitless", "salinity_adjusted": "PSS-78 unitless", "salinity_best": "PSS-78 unitless", "absolute_salinity": "g kg-1",
+    "pressure_raw": "dbar", "pressure_adjusted": "dbar", "pressure_best": "dbar", "pressure_dbar": "dbar", "pressure_adjusted_error": "dbar", "adjusted_pressure_error": "dbar", "pressure_qc": "quality flag", "pressure_adjusted_qc": "quality flag",
+    "depth_m": "m", "depth_uncertainty_m": "m",
+    "temperature_raw": "degC", "temperature_adjusted": "degC", "temperature_best": "degC", "temperature_adjusted_error": "degC", "conservative_temperature": "degC", "temperature": "degC", "temperature_qc": "quality flag", "temperature_adjusted_qc": "quality flag",
+    "salinity_raw": "PSS-78 unitless", "salinity_adjusted": "PSS-78 unitless", "salinity_best": "PSS-78 unitless", "salinity_adjusted_error": "PSS-78 unitless", "absolute_salinity": "g kg-1", "salinity": "g kg-1", "salinity_qc": "quality flag", "salinity_adjusted_qc": "quality flag",
     "latitude": "degrees_north", "longitude": "degrees_east", "timestamp": "ISO-8601 UTC",
 }
 
@@ -175,22 +176,26 @@ class InvestigationService:
             warnings.append("Nearest representations are ordered by spherical great-circle distance from the bounding-box center.")
             if plan.float_count is not None and selected_count < plan.float_count:
                 warnings.append(f"Only {selected_count} QC-eligible representations were available for requested float_count {plan.float_count}.")
-        return ResultEnvelope(query_plan=plan, data=data, chart_spec=[{"profile_metrics": metrics}], provenance=_provenance(rows), qc_summary=QcSummary(retained=len(rows), rejected=max(candidate_count - eligible_count, 0)), methods=[MethodRecord(name="duckdb_parameterized_profile_query", version="1", parameters={"qc_policy": plan.qc_mode, "parameters": plan.parameters or ["TEMP", "PSAL", "PRES"], "row_limit": plan.row_limit, "nearest_order": "bbox_center_distance" if plan.operation == "nearest_floats" else "not_applicable", "float_count": plan.float_count if plan.operation == "nearest_floats" else None, "adjusted_errors": error_parameters}, units=_FIELD_UNITS)], assumptions=[], warnings=warnings)
+        return ResultEnvelope(query_plan=plan, data=data, chart_spec=[{"profile_metrics": metrics}], provenance=_provenance(rows), qc_summary=QcSummary(retained=len(rows), rejected=max(candidate_count - eligible_count, 0)), methods=[MethodRecord(name="duckdb_parameterized_profile_query", version="1", parameters={"qc_policy": plan.qc_mode, "parameters": plan.parameters or ["TEMP", "PSAL", "PRES"], "row_limit": plan.row_limit, "nearest_order": "bbox_center_distance" if plan.operation == "nearest_floats" else "not_applicable", "float_count": plan.float_count if plan.operation == "nearest_floats" else None, "adjusted_errors": error_parameters}, units=_FIELD_UNITS), MethodRecord(name="teos_10_snapshot_normalization", version="snapshot", parameters={"functions": ["SA_from_SP", "CT_from_t", "z_from_p"]}, units={"absolute_salinity": "g kg-1", "conservative_temperature": "degC", "depth_m": "m"})], assumptions=[], warnings=warnings)
 
     def run_plan(self, plan: QueryPlan) -> ResultEnvelope:
         if plan.operation == "derive_section":
-            return self.derive_section(SectionRequest(profile_ids=plan.profile_ids, qc_mode=plan.qc_mode, row_limit=plan.row_limit), plan)
+            requested = [parameter for parameter in plan.parameters if parameter in {"TEMP", "PSAL"}]
+            return self.derive_section(SectionRequest(profile_ids=plan.profile_ids, qc_mode=plan.qc_mode, parameters=requested, row_limit=plan.row_limit), plan)
         if plan.operation == "find_profiles":
             rows, candidate_count, eligible_count = self.store.find_profiles(plan), self.store.count_candidates(plan), self.store.count_qc_eligible(plan)
         elif plan.operation == "nearest_floats":
-            rows = self.store.nearest_floats(plan)
-            identities = {(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) for row in rows}
-            # Receipts describe the complete representations actually selected,
-            # never the larger geographic candidate window.
+            # Select tiny identity records first; do not materialize levels until
+            # the complete selected representation set passes its row bound.
+            ordered_identities = self.store.nearest_identities(plan)
+            identities = set(ordered_identities)
             candidate_count = self.store.count_selected_candidates(plan, identities)
             eligible_count = self.store.count_selected_qc_eligible(plan, identities)
             if eligible_count > plan.row_limit:
                 raise ValueError("nearest representations exceed row_limit")
+            rows = self.store.compare_profiles([ProfileIdentifier(wmo=w, cycle=c, direction=d, source_profile_index=i) for w, c, d, i in ordered_identities], plan)
+            rank = {identity: index for index, identity in enumerate(ordered_identities)}
+            rows.sort(key=lambda row: (rank[(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"])], row["pressure_dbar"]))
         elif plan.operation == "get_profile":
             rows = self.store.get_profile(plan.wmo or "", plan.cycle or 0, plan.direction or "A", plan)
             candidate_count = self.store.count_profile_candidates(plan.wmo or "", plan.cycle or 0, plan.direction or "A")
@@ -233,11 +238,15 @@ class InvestigationService:
         return selected_envelope.model_copy(update={"query_plan": plan})
 
     def derive_section(self, request: SectionRequest, query_plan: QueryPlan | None = None) -> ResultEnvelope:
-        plan = query_plan or QueryPlan(operation="derive_section", profile_ids=request.profile_ids, parameters=["TEMP", "PSAL"], qc_mode=request.qc_mode, row_limit=request.row_limit)
-        request = request.model_copy(update={"row_limit": plan.row_limit})
+        requested = request.effective_parameters
+        plan = query_plan or QueryPlan(operation="derive_section", profile_ids=request.profile_ids, parameters=requested, qc_mode=request.qc_mode, row_limit=request.row_limit)
+        # A supplied plan cannot expose PRES in a derived section.
+        requested = [parameter for parameter in (plan.parameters or requested) if parameter in {"TEMP", "PSAL"}] or ["TEMP", "PSAL"]
+        request = request.model_copy(update={"row_limit": plan.row_limit, "parameters": requested})
         scientific_plan = QueryPlan(
             operation="compare_profiles",
             profile_ids=request.profile_ids,
+            # CT needs practical salinity even for a temperature-only section.
             parameters=["TEMP", "PSAL"],
             qc_mode=request.qc_mode,
             row_limit=plan.row_limit,
@@ -253,7 +262,7 @@ class InvestigationService:
         grouped: dict[tuple[str, int, str, int], list[dict[str, Any]]] = defaultdict(list)
         for row in rows:
             grouped[(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"])].append(row)
-        profiles = [grouped[(item.wmo, item.cycle, item.direction, item.source_profile_index)] for item in request.profile_ids if item.source_profile_index is not None and (item.wmo, item.cycle, item.direction, item.source_profile_index) in grouped]
+        profiles = [levels for _identity, levels in sorted(grouped.items(), key=lambda item: (item[1][0]["timestamp"], item[0]))]
         coordinates = [{key: _json_value(levels[0][key]) for key in ("wmo", "cycle", "direction", "source_profile_index", "vertical_sampling_scheme", "latitude", "longitude", "timestamp")} for levels in profiles]
         # Preflight the exact number of cells before allocating or iterating.
         pair_depths = [min(max(row["depth_m"] for row in left), max(row["depth_m"] for row in right)) for left, right in pairwise(profiles)]
@@ -273,8 +282,9 @@ class InvestigationService:
                 right_temperature, right_temperature_reason = _interpolate(right, depth, "conservative_temperature", request.max_vertical_gap_m)
                 left_salinity, left_salinity_reason = _interpolate(left, depth, "absolute_salinity", request.max_vertical_gap_m)
                 right_salinity, right_salinity_reason = _interpolate(right, depth, "absolute_salinity", request.max_vertical_gap_m)
-                vertical_reason = temperature_reason or right_temperature_reason or left_salinity_reason or right_salinity_reason
-                cell_reason = vertical_reason or reason
-                cells.append({"left_profile_index": index, "right_profile_index": index + 1, "depth_m": float(depth), "temperature": None if cell_reason or temperature is None or right_temperature is None else (temperature + right_temperature) / 2, "salinity": None if cell_reason or left_salinity is None or right_salinity is None else (left_salinity + right_salinity) / 2, "mask_reason": cell_reason})
+                temperature_reason = temperature_reason or right_temperature_reason
+                salinity_reason = left_salinity_reason or right_salinity_reason
+                cell_reason = (temperature_reason if "TEMP" in requested else None) or (salinity_reason if "PSAL" in requested else None) or reason
+                cells.append({"left_profile_index": index, "right_profile_index": index + 1, "depth_m": float(depth), "temperature": None if "TEMP" not in requested or cell_reason or temperature is None or right_temperature is None else (temperature + right_temperature) / 2, "salinity": None if "PSAL" not in requested or cell_reason or left_salinity is None or right_salinity is None else (left_salinity + right_salinity) / 2, "mask_reason": cell_reason})
         section = cast(dict[str, JsonValue], {"observation_coordinates": coordinates, "section_cells": cells, "masked_gaps": gaps})
-        return envelope.model_copy(update={"data": [section], "chart_spec": [{"section": section}], "section_request": request, "methods": [MethodRecord(name="gap_masked_linear_section", version="1", parameters={"depth_step_m": request.depth_step_m, "row_limit": request.row_limit, "max_time_gap_hours": request.max_time_gap_hours, "max_distance_km": request.max_distance_km, "max_vertical_gap_m": request.max_vertical_gap_m}, units=_FIELD_UNITS)], "assumptions": ["Sections only connect the explicitly requested source representations."]})
+        return envelope.model_copy(update={"data": [section], "chart_spec": [{"section": section}], "section_request": request, "methods": [*envelope.methods, MethodRecord(name="gap_masked_linear_section", version="1", parameters={"parameters": requested, "depth_step_m": request.depth_step_m, "row_limit": request.row_limit, "max_time_gap_hours": request.max_time_gap_hours, "max_distance_km": request.max_distance_km, "max_vertical_gap_m": request.max_vertical_gap_m}, units=_FIELD_UNITS)], "assumptions": ["Sections only connect the explicitly requested source representations."]})

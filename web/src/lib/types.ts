@@ -21,8 +21,8 @@ export interface QueryPlan {
 
 export interface Provenance { source_url: string; snapshot_doi: string; fetched_at: string; sha256: string }
 export interface QcSummary { retained: number; rejected: number }
-export interface MethodRecord { name: string; version: string; parameters: Record<string, unknown> }
-export interface SectionRequest { profile_ids: Array<ProfileIdentifier & { source_profile_index: number }>; qc_mode: QcPolicy; depth_step_m: number; max_time_gap_hours: number; max_distance_km: number; max_vertical_gap_m: number }
+export interface MethodRecord { name: string; version: string; parameters: Record<string, unknown>; units?: Record<string, string> }
+export interface SectionRequest { profile_ids: Array<ProfileIdentifier & { source_profile_index: number }>; qc_mode: QcPolicy; parameters: Array<'TEMP' | 'PSAL'>; row_limit: number; depth_step_m: number; max_time_gap_hours: number; max_distance_km: number; max_vertical_gap_m: number }
 export type ProfileMetricId = 'principal_thermocline' | 'strongest_salinity_gradient'
 export interface ProfileMetric {
   wmo: string
