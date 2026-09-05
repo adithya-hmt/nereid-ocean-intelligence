@@ -32,3 +32,20 @@ The Playwright configuration used `127.0.0.1` while Next dev identified itself a
 - `pnpm --dir web test --run`
 - `pnpm --dir web lint`
 - `pnpm --dir web build`
+
+## Fix round 1: benchmark and trajectory integrity
+
+### Findings addressed
+
+1. The prior browser `requestAnimationFrame` counter and `Canvas.onCreated` marker were not evidence of actual R3F rendering. The benchmark now uses an in-canvas `useFrame` probe. Its first callback records initialization and marks render-ready only after a real R3F frame. In benchmark mode, it explicitly calls `invalidate()` from that callback while retaining normal `frameloop="demand"`, counts actual R3F frames for five seconds, then exposes the resulting FPS.
+2. Time cutoff now derives sorted, unique parsed timestamps and filters immutable source rows by `timestamp <= cutoff`; same-timestamp profile depths are therefore selected together even when source rows are unsorted. `trajectory.test.ts` covers both cases.
+3. Normal WebGL readout now exposes accessible longitude, latitude, and depth min/max ranges, in addition to cutoff time, rendered/total counts, and exaggeration.
+4. Benchmark mode contains a visible accessible panel separating declared runner browser/hardware from measured initialization, actual R3F FPS, browser, and hardware. Playwright reads those live panel values only after benchmark completion and writes them to evidence.
+5. WebGL support is preflighted before Canvas mounting; canvas-capable documents with unavailable WebGL route directly to the SVG fallback. `webgl.test.ts` covers this browser capability boundary.
+
+### Evidence and result
+
+- Red: actual R3F measurement exposed the earlier RAF claim as invalid. With the five-second in-canvas probe, this HeadlessChrome environment measured `10.984` R3F FPS rather than the prior browser RAF value near 60.
+- Mitigation: visible point size was reduced from `0.012` to `0.003`. The truthful post-mitigation value remains below the design target, so it is not represented as meeting 30 FPS.
+- Green: `pnpm --dir web exec playwright test e2e/rendering.spec.ts` passes and generated `docs/evidence/rendering.json` from the live benchmark panel: initialization `1.3 ms`, actual R3F FPS `10.984`, browser and hardware separately recorded.
+- Commands: `pnpm --dir web test --run`; `pnpm --dir web lint`; `pnpm --dir web build`; `pnpm --dir web exec playwright test e2e/rendering.spec.ts`.
