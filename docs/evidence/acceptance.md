@@ -35,7 +35,7 @@ Run on 2026-09-05 after R5 exact-rendering remediation:
 
 ```bash
 uv run --project pipeline pytest pipeline/tests -v  # passed: 7 tests (186 warnings)
-uv run --project api pytest api/tests -v            # passed: 57 tests (2 warnings)
+uv run --project api pytest api/tests -v            # passed: 69 tests (2 warnings)
 pnpm --dir web test --run src/components/InvestigationWorkspace.test.tsx  # passed: 1 file / 8 tests
 pnpm --dir web test --run                           # passed: 7 files / 20 tests
 pnpm --dir web lint                                 # passed
