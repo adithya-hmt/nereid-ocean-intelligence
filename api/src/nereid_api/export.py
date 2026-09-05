@@ -60,7 +60,13 @@ def build_evidence_zip(envelope: ResultEnvelope, rows: list[dict[str, object]], 
         "selection.csv": csv_buffer.getvalue().encode("utf-8"),
         "provenance.json": _json([item.model_dump(mode="json") for item in envelope.provenance]),
         "query-plan.json": _json(envelope.query_plan.model_dump(mode="json")),
-        "methods.json": _json({"methods": [item.model_dump(mode="json") for item in envelope.methods], "qc_summary": envelope.qc_summary.model_dump(mode="json")}),
+        "methods.json": _json({
+            "chart_spec": envelope.chart_spec,
+            "assumptions": envelope.assumptions,
+            "warnings": envelope.warnings,
+            "methods": [item.model_dump(mode="json") for item in envelope.methods],
+            "qc_summary": envelope.qc_summary.model_dump(mode="json"),
+        }),
     }
     output = io.BytesIO()
     with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:

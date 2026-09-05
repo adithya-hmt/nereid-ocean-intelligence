@@ -5,6 +5,8 @@ import json
 from datetime import UTC, datetime
 from zipfile import ZipFile
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 from fastapi.testclient import TestClient
 
 from nereid_api.export import build_evidence_zip
@@ -21,7 +23,7 @@ def test_export_is_deterministic_and_source_faithful():
     envelope = ResultEnvelope(
         query_plan=QueryPlan(operation="get_profile", wmo="1902202", cycle=161, direction="A"),
         data=[],
-        chart_spec=[],
+        chart_spec=[{"profile_metrics": [{"name": "metric", "value": 1.0}]}],
         provenance=[
             Provenance(
                 source_url="https://data-argo.ifremer.fr/dac/aoml/1902202/profiles/D1902202_161.nc",
@@ -34,8 +36,8 @@ def test_export_is_deterministic_and_source_faithful():
         methods=[
             MethodRecord(name="method", version="1", parameters={"units": "dbar"})
         ],
-        assumptions=[],
-        warnings=[],
+        assumptions=["Assumption."],
+        warnings=["Warning."],
     )
     rows = [
         {
@@ -73,6 +75,9 @@ def test_export_is_deterministic_and_source_faithful():
         assert json.loads(archive.read("provenance.json"))[0]["sha256"] == "a" * 64
         assert json.loads(archive.read("query-plan.json"))["wmo"] == "1902202"
         methods = json.loads(archive.read("methods.json"))
+        assert methods["chart_spec"] == [{"profile_metrics": [{"name": "metric", "value": 1.0}]}]
+        assert methods["assumptions"] == ["Assumption."]
+        assert methods["warnings"] == ["Warning."]
         assert methods["qc_summary"] == {"retained": 2, "rejected": 1}
         assert methods["methods"][0]["parameters"]["units"] == "dbar"
         assert "selected derivative" in archive.read("README.txt").decode()
@@ -126,6 +131,15 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
         },
     ).json()
     selection = {"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}
+    levels_path = snapshot_dir / "levels.parquet"
+    levels = pq.read_table(levels_path).to_pylist()
+    for row in levels:
+        if row["wmo"] == "1900001":
+            row["temperature_adjusted_error"] = None
+            row["pressure_qc"] = row["pressure_adjusted_qc"] = 1
+            row["temperature_qc"] = row["temperature_adjusted_qc"] = 1
+            row["salinity_qc"] = row["salinity_adjusted_qc"] = 1
+    pq.write_table(pa.Table.from_pylist(levels), levels_path)
     response = client.post(
         "/v1/export",
         json={
@@ -158,7 +172,21 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
         assert {row["source_profile_index"] for row in selected} == {"0"}
         assert all(row["temperature_adjusted_qc"] not in {"3", "4"} for row in selected)
         methods = json.loads(archive.read("methods.json"))
-        assert methods["qc_summary"] == {"retained": 2, "rejected": 4}
+        assert methods["qc_summary"] == {"retained": 6, "rejected": 0}
+        metrics = methods["chart_spec"][0]["profile_metrics"]
+        assert {
+            (metric["wmo"], metric["cycle"], metric["direction"], metric["source_profile_index"])
+            for metric in metrics
+        } == {("1900001", 7, "A", 0)}
+        assert all(metric["algorithm"] and isinstance(metric["value"], float) for metric in metrics)
+        assert not any(metric["wmo"] == "1900002" for metric in metrics)
+        assert methods["assumptions"] == []
+        assert methods["warnings"] == [
+            "Adjusted-error metadata is missing or invalid for eligible TEMP measurements in representation 1900001/7/A/0."
+        ]
+        errors = methods["methods"][0]["parameters"]["adjusted_errors"]
+        assert set(errors) == {"1900001/7/A/0:TEMP", "1900001/7/A/0:PSAL"}
+        assert errors["1900001/7/A/0:TEMP"]["adjusted_error_available_count"] == 0
         units = methods["methods"][0]["units"]
         assert {field: units[field] for field in ("pressure_dbar", "depth_m", "temperature_raw", "temperature_adjusted", "salinity_raw", "salinity_adjusted", "conservative_temperature", "absolute_salinity")} == {
             "pressure_dbar": "dbar", "depth_m": "m", "temperature_raw": "degC", "temperature_adjusted": "degC", "salinity_raw": "PSS-78 unitless", "salinity_adjusted": "PSS-78 unitless", "conservative_temperature": "degC", "absolute_salinity": "g kg-1",
