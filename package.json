@@ -2,6 +2,7 @@
   "name": "nereid",
   "private": true,
   "scripts": {
+    "dev": "sh -c 'NEREID_SNAPSHOT_DIR=data/snapshots/indian-ocean-2023-03 NEREID_WEB_ORIGIN=http://localhost:3100 uv run --project api uvicorn nereid_api.main:create_offline_app --factory --host 127.0.0.1 --port 8000 --app-dir api/src & api=$!; trap \"kill $api\" EXIT INT TERM; NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 pnpm --dir web dev --port 3100'",
     "test": "pnpm --dir web test",
     "lint": "pnpm --dir web lint"
   }
