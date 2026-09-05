@@ -78,6 +78,9 @@ def _mask_unrequested(rows: list[dict[str, Any]], parameters: Sequence[str], pol
     return rows
 
 
+_METRIC_DEPENDENCY_PARAMETERS = ("TEMP", "PSAL", "PRES")
+
+
 def _profile_metrics(rows: list[dict[str, Any]], policy: QcPolicy, parameters: Sequence[str]) -> list[dict[str, JsonValue]]:
     grouped: dict[tuple[str, int, str, int], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -143,8 +146,9 @@ class InvestigationService:
             raise ValueError(f"insufficient or missing requested representation: {names}")
 
     def _envelope(self, plan: QueryPlan, rows: list[dict[str, Any]], candidate_count: int, eligible_count: int) -> ResultEnvelope:
+        scientific_rows = _mask_unrequested([row.copy() for row in rows], _METRIC_DEPENDENCY_PARAMETERS, plan.qc_mode)
+        metrics = _profile_metrics(scientific_rows, plan.qc_mode, plan.parameters) if scientific_rows else []
         rows = _mask_unrequested(rows, plan.parameters, plan.qc_mode)
-        metrics = _profile_metrics(rows, plan.qc_mode, plan.parameters) if rows else []
         data = [{key: _json_value(value) for key, value in row.items()} for row in rows]
         requested = set(plan.parameters) or {"TEMP", "PSAL", "PRES"}
         error_fields = {"PRES": "pressure_adjusted_error", "TEMP": "temperature_adjusted_error", "PSAL": "salinity_adjusted_error"}

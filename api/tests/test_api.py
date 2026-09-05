@@ -285,6 +285,55 @@ def test_parameter_specific_qc_and_masking(snapshot_dir, parameters):
         assert all(row["salinity_adjusted_qc"] in {1, 2} for row in rows)
         assert all(row["temperature_adjusted"] is None for row in rows if row["temperature_adjusted_qc"] is None)
 
+def test_temp_and_salinity_metrics_keep_internal_pressure_dependencies_masked(snapshot_dir):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    levels_path = snapshot_dir / "levels.parquet"
+    rows = pq.read_table(levels_path).to_pylist()
+    for row in rows:
+        row["pressure_qc"] = row["pressure_adjusted_qc"] = 1
+        row["temperature_qc"] = row["temperature_adjusted_qc"] = 1
+        row["salinity_qc"] = row["salinity_adjusted_qc"] = 1
+    pq.write_table(pa.Table.from_pylist(rows), levels_path)
+
+    payload = {"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP", "PSAL"], "qc_mode": "research"}
+    body = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload).json()
+
+    assert {(metric["wmo"], metric["name"]) for metric in body["chart_spec"][0]["profile_metrics"]} == {
+        ("1900001", "principal_thermocline"),
+        ("1900001", "strongest_salinity_gradient"),
+        ("1900002", "principal_thermocline"),
+        ("1900002", "strongest_salinity_gradient"),
+    }
+    pressure_fields = ("pressure_raw", "pressure_adjusted", "pressure_best", "pressure_dbar", "pressure_qc", "pressure_adjusted_qc", "pressure_adjusted_error", "adjusted_pressure_error")
+    assert all(row[field] is None for row in body["data"] for field in pressure_fields)
+
+
+def test_bad_pressure_raw_fallback_is_excluded_from_metric_input(snapshot_dir):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    levels_path = snapshot_dir / "levels.parquet"
+    rows = pq.read_table(levels_path).to_pylist()
+    for row in rows:
+        row["pressure_qc"] = row["pressure_adjusted_qc"] = 1
+        row["temperature_qc"] = row["temperature_adjusted_qc"] = 1
+        row["salinity_qc"] = row["salinity_adjusted_qc"] = 1
+    bad_row = next(row for row in rows if row["wmo"] == "1900001" and row["pressure_dbar"] == 20)
+    bad_row["pressure_adjusted"] = None
+    bad_row["pressure_qc"] = 3
+    bad_row["absolute_salinity"] = 999.0
+    pq.write_table(pa.Table.from_pylist(rows), levels_path)
+
+    payload = {"operation": "find_profiles", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP", "PSAL"], "qc_mode": "research"}
+    body = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json=payload).json()
+    affected_metrics = [metric for metric in body["chart_spec"][0]["profile_metrics"] if metric["wmo"] == "1900001"]
+
+    assert {metric["name"] for metric in affected_metrics} == {"principal_thermocline", "strongest_salinity_gradient"}
+    assert all(metric["depth_m"] != 20 for metric in affected_metrics)
+
+
 @pytest.mark.parametrize(
     "payload",
     [

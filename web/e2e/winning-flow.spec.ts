@@ -47,7 +47,7 @@ test('replays the committed real March snapshot without outbound network access'
   await expect(metric).toContainText('Vertical uncertainty')
   await expect(metric).toContainText('Method')
   await expect(metric).toContainText('QC')
-  await expect(page.locator('input[type="checkbox"]:checked')).toHaveCount(2)
+  await expect(page.locator('.receipt input[type="checkbox"]:checked')).toHaveCount(2)
   await page.getByRole('button', { name: 'Derive section from selected representations' }).click()
   await expect(page.getByRole('heading', { name: 'Gap-masked cross-section' })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('table', { name: 'Cross-section observations' })).toBeVisible()
