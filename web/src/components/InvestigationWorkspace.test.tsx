@@ -1,10 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 
-import { executeQuery } from '../lib/api'
+import { executeQuery, interpretQuestion } from '../lib/api'
 import { InvestigationWorkspace } from './InvestigationWorkspace'
 
-vi.mock('../lib/api', () => ({ executeQuery: vi.fn() }))
+vi.mock('../lib/api', () => ({ executeQuery: vi.fn(), interpretQuestion: vi.fn() }))
 
 const response = {
   query_plan: {
@@ -29,6 +29,7 @@ const response = {
 }
 
 const mockedExecuteQuery = vi.mocked(executeQuery)
+const mockedInterpretQuestion = vi.mocked(interpretQuestion)
 
 afterEach(() => { cleanup(); vi.resetAllMocks() })
 
@@ -47,6 +48,17 @@ test('executes the curated workflow and renders its scientific receipt', async (
   expect(screen.getByText(/retained/)).toBeDefined()
   expect(screen.getByText(/excluded/)).toBeDefined()
   expect(screen.getByText('duckdb_parameterized_profile_query')).toBeDefined()
+})
+
+test('shows that explicit filters still work when AI interpretation is unavailable', async () => {
+  mockedInterpretQuestion.mockResolvedValue({ plan: null, planner: 'explicit', warnings: ['AI interpretation unavailable—filters still work. Use explicit filters.'] })
+  render(<InvestigationWorkspace />)
+
+  fireEvent.change(screen.getByLabelText('Question (optional)'), { target: { value: 'Find profiles near 10N' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Interpret question' }))
+
+  expect((await screen.findByRole('status')).textContent).toContain('AI interpretation unavailable—filters still work')
+  expect(screen.getByRole('button', { name: 'Run investigation' })).toBeDefined()
 })
 
 test('does not let a superseded request replace the newer result', async () => {

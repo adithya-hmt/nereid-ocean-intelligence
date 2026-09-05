@@ -115,6 +115,21 @@ def test_section_masks_unsupported_gap(snapshot_dir):
     assert all(cell["temperature"] is None for cell in section["section_cells"])
 
 
+def test_text_planning_falls_back_to_explicit_filters_without_azure(monkeypatch, snapshot_dir):
+    for setting in ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT", "OPENAI_API_VERSION"):
+        monkeypatch.delenv(setting, raising=False)
+    client = TestClient(create_app(snapshot_dir))
+
+    response = client.post("/v1/query/plan", json={"question": "Find profiles near 10N in March"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "plan": None,
+        "planner": "explicit",
+        "warnings": ["AI interpretation unavailable—filters still work. Use explicit filters."],
+    }
+
+
 def test_missing_snapshot_returns_service_unavailable(tmp_path):
     client = TestClient(create_app(tmp_path))
 
