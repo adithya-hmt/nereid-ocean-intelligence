@@ -5,6 +5,8 @@ export interface TrajectoryRow {
   timestamp: string
   wmo: string | number
   cycle: number
+  direction: 'A' | 'D'
+  source_profile_index: number
 }
 
 export interface TrajectoryBuffers {
@@ -30,7 +32,7 @@ export function toGlobePosition(longitude: number, latitude: number, depthM: num
 }
 
 export function isTrajectoryRow(row: Record<string, unknown>): row is Record<string, unknown> & TrajectoryRow {
-  return finite(row.longitude) && row.longitude >= -180 && row.longitude <= 180 && finite(row.latitude) && row.latitude >= -90 && row.latitude <= 90 && finite(row.depth_m) && row.depth_m >= 0 && typeof row.timestamp === 'string' && !Number.isNaN(Date.parse(row.timestamp)) && (typeof row.wmo === 'string' || finite(row.wmo)) && finite(row.cycle)
+  return finite(row.longitude) && row.longitude >= -180 && row.longitude <= 180 && finite(row.latitude) && row.latitude >= -90 && row.latitude <= 90 && finite(row.depth_m) && row.depth_m >= 0 && typeof row.timestamp === 'string' && !Number.isNaN(Date.parse(row.timestamp)) && (typeof row.wmo === 'string' || finite(row.wmo)) && finite(row.cycle) && (row.direction === 'A' || row.direction === 'D') && finite(row.source_profile_index)
 }
 
 export function buildTrajectoryBuffers(rows: readonly TrajectoryRow[], exaggeration: number): TrajectoryBuffers {

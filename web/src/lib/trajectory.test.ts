@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { rowsAtOrBefore, sortedUniqueTimestamps } from './trajectory'
 
 const rows = [
-  { longitude: 2, latitude: 2, depth_m: 20, timestamp: '2023-03-02T00:00:00Z', wmo: '1', cycle: 2 },
-  { longitude: 1, latitude: 1, depth_m: 10, timestamp: '2023-03-01T00:00:00Z', wmo: '1', cycle: 1 },
-  { longitude: 1, latitude: 1, depth_m: 30, timestamp: '2023-03-01T00:00:00Z', wmo: '1', cycle: 1 },
+  { longitude: 2, latitude: 2, depth_m: 20, timestamp: '2023-03-02T00:00:00Z', wmo: '1', cycle: 2, direction: 'D' as const, source_profile_index: 0 },
+  { longitude: 1, latitude: 1, depth_m: 10, timestamp: '2023-03-01T00:00:00Z', wmo: '1', cycle: 1, direction: 'A' as const, source_profile_index: 0 },
+  { longitude: 1, latitude: 1, depth_m: 30, timestamp: '2023-03-01T00:00:00Z', wmo: '1', cycle: 1, direction: 'A' as const, source_profile_index: 0 },
 ]
 
 describe('trajectory time selection', () => {

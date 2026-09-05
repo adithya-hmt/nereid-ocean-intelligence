@@ -1,4 +1,3 @@
-# ruff: noqa: I001
 # pyright: reportMissingImports=false
 """Validated contracts for bounded scientific investigations."""
 
@@ -33,7 +32,8 @@ class SectionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     profile_ids: list[ProfileIdentifier] = Field(min_length=2, max_length=100)
     qc_mode: QcPolicy = QcPolicy.RESEARCH
-    depth_step_m: float = Field(default=10, gt=0, le=100)
+    depth_step_m: float = Field(default=10, ge=1, le=100)
+    row_limit: int = Field(default=10_000, ge=1, le=100_000)
     max_time_gap_hours: float = Field(default=168, gt=0, le=24 * 31)
     max_distance_km: float = Field(default=500, gt=0, le=2_000)
     max_vertical_gap_m: float = Field(default=100, gt=0, le=500)
@@ -112,6 +112,7 @@ class MethodRecord(BaseModel):
     name: str
     version: str
     parameters: dict[str, JsonValue]
+    units: dict[str, str] = Field(default_factory=dict)
 
 
 class DataMode(StrEnum):

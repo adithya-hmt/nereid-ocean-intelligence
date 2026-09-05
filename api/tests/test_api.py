@@ -153,6 +153,7 @@ def test_section_masks_unsupported_gap(snapshot_dir):
         "profile_ids": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 0, "direction": "A"}, {"wmo": "1900002", "cycle": 8, "source_profile_index": 0, "direction": "A"}],
         "qc_mode": "exploratory",
         "depth_step_m": 5,
+        "row_limit": 10000,
         "max_time_gap_hours": 24,
         "max_distance_km": 100,
         "max_vertical_gap_m": 100.0,

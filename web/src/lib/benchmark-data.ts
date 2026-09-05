@@ -17,5 +17,7 @@ export function createBenchmarkRows(count: number): TrajectoryRow[] {
     timestamp: new Date(start + index * 60_000).toISOString(),
     wmo: `BENCH-${Math.floor(index / 1000)}`,
     cycle: index % 1000,
+    direction: 'A',
+    source_profile_index: 0,
   }))
 }

@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { createTrajectoryGeometry, updateTrajectoryGeometry } from './point-cloud'
 
 const rows = [
-  { longitude: 70, latitude: 10, depth_m: 10, timestamp: '2023-03-01T00:00:00Z', wmo: '1', cycle: 1 },
-  { longitude: 71, latitude: 11, depth_m: 20, timestamp: '2023-03-02T00:00:00Z', wmo: '1', cycle: 2 },
+  { longitude: 70, latitude: 10, depth_m: 10, timestamp: '2023-03-01T00:00:00Z', wmo: '1', cycle: 1, direction: 'A' as const, source_profile_index: 0 },
+  { longitude: 71, latitude: 11, depth_m: 20, timestamp: '2023-03-02T00:00:00Z', wmo: '1', cycle: 2, direction: 'D' as const, source_profile_index: 0 },
 ]
 
 describe('trajectory point cloud resources', () => {
