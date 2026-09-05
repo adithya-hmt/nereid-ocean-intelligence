@@ -314,3 +314,12 @@ Use `run_plan` in the documented latency command and either restore the truthful
 - [ ] Render direct typed `derive_section` results as sections and order all section coordinates/cells chronologically with deterministic identity tie-breakers.
 - [ ] Preserve query and TEOS-10 method records in section/export receipts; add units for every raw, adjusted, error, TEOS-10, and section field.
 - [ ] Run full pipeline/API/web/offline validation, reconcile evidence, and commit `fix: close final release seams`.
+
+---
+
+### Task R10: Prevent partial metrics and stale linked-section evidence
+
+- [ ] Suppress profile-wide derived metrics whenever a find/get level result is row-truncated; retain the explicit truncation warning.
+- [ ] Any linked section-control edit must abort in-flight derivation and clear an already rendered section before changing visible controls.
+- [ ] Render a read-only receipt from every linked section envelope, including exact section identities, provenance, QC, methods/units, controls, assumptions, and warnings; preserve the parent query/export receipt separately.
+- [ ] Add partial-page metric and in-flight/post-result section-control regressions, run complete offline gates, reconcile evidence, and commit `fix: bind metrics and sections to complete evidence`.
