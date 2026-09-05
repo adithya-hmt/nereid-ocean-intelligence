@@ -46,7 +46,7 @@ def test_checked_in_allowed_cases_are_self_describing_and_construct_typed_plans(
     operation_markers = {
         "find_profiles": ("find", "search", "list", "show"),
         "nearest_floats": ("nearest",),
-        "get_profile": ("get", "retrieve", "open", "inspect", "export"),
+        "get_profile": ("get", "retrieve", "open", "inspect"),
         "compare_profiles": ("compare",),
         "derive_section": ("derive",),
     }
