@@ -20,3 +20,19 @@ class FakePlanner:
 def test_score_compares_every_expected_filter_and_rejections():
     cases = [{"question": "good", "expected": {"operation": "get_profile", "wmo": "1902202", "cycle": 161, "direction": "A"}}, {"question": "reject", "expected": "rejection"}, {"question": "good", "expected": {"operation": "get_profile", "wmo": "other", "cycle": 161, "direction": "A"}}]
     assert asyncio.run(evaluate.score(FakePlanner(), cases)) == (2, 3)
+
+
+def test_checked_in_allowed_cases_construct_typed_plans_and_score_nested_direction_and_count():
+    import json
+
+    cases = json.loads((Path(__file__).parents[2] / "docs/evidence/query-cases.json").read_text())
+    allowed = [case for case in cases if case["expected"] != "rejection"]
+    assert len(allowed) == 25
+    plans = [QueryPlan.model_validate(case["expected"]) for case in allowed]
+    assert all(plan.operation != "nearest_floats" or plan.float_count is not None for plan in plans)
+    assert all(item.direction == "A" for plan in plans for item in plan.profile_ids)
+    expected = next(case["expected"] for case in allowed if case["expected"]["operation"] == "compare_profiles")
+    plan = QueryPlan.model_validate(expected)
+    assert evaluate.matches(plan, expected)
+    wrong_direction = {**expected, "profile_ids": [{**expected["profile_ids"][0], "direction": "D"}, expected["profile_ids"][1]]}
+    assert not evaluate.matches(plan, wrong_direction)

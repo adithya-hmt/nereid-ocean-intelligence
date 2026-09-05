@@ -143,8 +143,11 @@ class InvestigationService:
         if len({row["vertical_sampling_scheme"] for row in rows}) > 1:
             warnings.append("Selected representations use multiple vertical sampling schemes.")
         if plan.operation == "nearest_floats":
-            warnings = warnings + ["Nearest representations are ordered by squared geographic distance from the bounding-box center."]
-        return ResultEnvelope(query_plan=plan, data=data, chart_spec=[{"profile_metrics": metrics}], provenance=_provenance(rows), qc_summary=QcSummary(retained=len(rows), rejected=max(candidate_count - eligible_count, 0)), methods=[MethodRecord(name="duckdb_parameterized_profile_query", version="1", parameters={"qc_policy": plan.qc_mode, "parameters": plan.parameters or ["TEMP", "PSAL", "PRES"], "row_limit": plan.row_limit, "nearest_order": "bbox_center_distance" if plan.operation == "nearest_floats" else "not_applicable", "adjusted_errors": error_parameters})], assumptions=[], warnings=warnings)
+            selected_count = len({(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) for row in rows})
+            warnings.append("Nearest representations are ordered by squared geographic distance from the bounding-box center.")
+            if plan.float_count is not None and selected_count < plan.float_count:
+                warnings.append(f"Only {selected_count} QC-eligible representations were available for requested float_count {plan.float_count}.")
+        return ResultEnvelope(query_plan=plan, data=data, chart_spec=[{"profile_metrics": metrics}], provenance=_provenance(rows), qc_summary=QcSummary(retained=len(rows), rejected=max(candidate_count - eligible_count, 0)), methods=[MethodRecord(name="duckdb_parameterized_profile_query", version="1", parameters={"qc_policy": plan.qc_mode, "parameters": plan.parameters or ["TEMP", "PSAL", "PRES"], "row_limit": plan.row_limit, "nearest_order": "bbox_center_distance" if plan.operation == "nearest_floats" else "not_applicable", "float_count": plan.float_count if plan.operation == "nearest_floats" else None, "adjusted_errors": error_parameters})], assumptions=[], warnings=warnings)
 
     def run_plan(self, plan: QueryPlan) -> ResultEnvelope:
         if plan.operation == "derive_section":
@@ -152,8 +155,13 @@ class InvestigationService:
         if plan.operation == "find_profiles":
             rows, candidate_count, eligible_count = self.store.find_profiles(plan), self.store.count_candidates(plan), self.store.count_qc_eligible(plan)
         elif plan.operation == "nearest_floats":
-            rows, candidate_count, eligible_count = self.store.nearest_floats(plan), self.store.count_candidates(plan), self.store.count_qc_eligible(plan)
-            if len(rows) > plan.row_limit:
+            rows = self.store.nearest_floats(plan)
+            identities = {(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) for row in rows}
+            # Receipts describe the complete representations actually selected,
+            # never the larger geographic candidate window.
+            candidate_count = self.store.count_selected_candidates(plan, identities)
+            eligible_count = self.store.count_selected_qc_eligible(plan, identities)
+            if eligible_count > plan.row_limit:
                 raise ValueError("nearest representations exceed row_limit")
         elif plan.operation == "get_profile":
             rows = self.store.get_profile(plan.wmo or "", plan.cycle or 0, plan.direction or "A", plan)

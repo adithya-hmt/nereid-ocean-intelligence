@@ -391,3 +391,54 @@ def test_exact_selection_keeps_ascending_and_descending_collision_distinct(snaps
     })
     assert response.status_code == 200
     assert {row["direction"] for row in response.json()["data"]} == {"A", "D"}
+
+
+def test_nearest_receipt_is_scoped_to_complete_selected_representations(snapshot_dir):
+    response = TestClient(create_app(snapshot_dir)).post("/v1/query/execute", json={
+        "operation": "nearest_floats", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31",
+        "parameters": ["TEMP"], "qc_mode": "research", "float_count": 2, "row_limit": 10,
+    })
+    assert response.status_code == 200
+    body = response.json()
+    identities = {(row["wmo"], row["cycle"], row["direction"], row["source_profile_index"]) for row in body["data"]}
+    assert len(identities) == 2
+    assert body["qc_summary"] == {"retained": 4, "rejected": 8}
+    assert "Results truncated to the requested row limit." not in body["warnings"]
+    assert body["methods"][0]["parameters"]["float_count"] == 2
+
+
+def test_nearest_fewer_available_is_truthful_and_overflow_refuses_without_partial_rows(snapshot_dir):
+    client = TestClient(create_app(snapshot_dir))
+    payload = {"operation": "nearest_floats", "bbox": [60, 0, 80, 20], "start_date": "2023-03-01", "end_date": "2023-03-31", "parameters": ["TEMP"], "qc_mode": "research", "float_count": 3, "row_limit": 10}
+    response = client.post("/v1/query/execute", json=payload)
+    assert response.status_code == 200
+    assert len({row["wmo"] for row in response.json()["data"]}) == 2
+    assert any("Only 2 QC-eligible representations" in warning for warning in response.json()["warnings"])
+    payload["row_limit"] = 1
+    overflow = client.post("/v1/query/execute", json=payload)
+    assert overflow.status_code == 422
+    assert overflow.json()["detail"] == "nearest representations exceed row_limit"
+
+
+def test_raw_qc_mismatch_is_quarantined_in_api_and_export(snapshot_dir):
+    import io
+    import zipfile
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    levels = pq.read_table(snapshot_dir / "levels.parquet").to_pylist()
+    levels[0]["temperature_qc"] = 4
+    levels[0]["temperature_adjusted_qc"] = 1
+    pq.write_table(pa.Table.from_pylist(levels), snapshot_dir / "levels.parquet")
+    client = TestClient(create_app(snapshot_dir))
+    plan = {"operation": "get_profile", "wmo": "1900001", "cycle": 7, "direction": "A", "parameters": ["TEMP"], "qc_mode": "research"}
+    result = client.post("/v1/query/execute", json=plan)
+    assert result.status_code == 200
+    row = next(row for row in result.json()["data"] if row["level_index"] == 0)
+    assert row["temperature_raw"] is None
+    assert row["conservative_temperature"] is not None
+    exported = client.post("/v1/export", json={"plan": plan, "selections": [{"wmo": "1900001", "cycle": 7, "direction": "A", "source_profile_index": 0}]})
+    assert exported.status_code == 200
+    csv = zipfile.ZipFile(io.BytesIO(exported.content)).read("selection.csv").decode()
+    assert ",," in csv or ",\n" in csv
+    assert "28.0" not in csv
