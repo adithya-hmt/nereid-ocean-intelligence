@@ -158,18 +158,37 @@ class InvestigationService:
             warnings=warnings,
         )
 
+    def export_selection(self, plan: QueryPlan, selections: list[dict[str, Any]]) -> ResultEnvelope:
+        """Re-execute a bounded plan and export only known QC-eligible representations."""
+        envelope = self.execute(plan)  # nosec B608: QueryPlan dispatch uses fixed, bound store queries.
+        requested = {(item["wmo"], item["cycle"], item["source_profile_index"]) for item in selections}
+        if len(requested) != len(selections):
+            raise ValueError("export selections must be unique")
+        available = {(row["wmo"], row["cycle"], row["source_profile_index"]) for row in envelope.data}
+        if not requested <= available:
+            raise ValueError("export selection is not present in the bounded QC-eligible result")
+        rows = [row for row in envelope.data if (row["wmo"], row["cycle"], row["source_profile_index"]) in requested]
+        return envelope.model_copy(update={
+            "data": rows,
+            "provenance": _provenance(rows),
+            "qc_summary": QcSummary(retained=len(rows), rejected=0),
+        })
+
     def derive_section(self, request: SectionRequest) -> ResultEnvelope:
         """Return a complete receipt for a QC-filtered, gap-masked section."""
         rows = self.store.compare_profiles(request.profile_ids, request.qc_mode)
         candidate_count = self.store.count_profile_candidates(request.profile_ids)
-        grouped: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+        # Each WMO/cycle selection expands to every preserved source representation.
+        grouped: dict[tuple[str, int, int], list[dict[str, Any]]] = defaultdict(list)
         for row in rows:
-            grouped[(row["wmo"], row["cycle"])].append(row)
+            grouped[(row["wmo"], row["cycle"], row["source_profile_index"])].append(row)
         profiles = sorted(grouped.values(), key=lambda levels: levels[0]["timestamp"])
         coordinates = [
             {
                 "wmo": levels[0]["wmo"],
                 "cycle": levels[0]["cycle"],
+                "source_profile_index": levels[0]["source_profile_index"],
+                "vertical_sampling_scheme": levels[0]["vertical_sampling_scheme"],
                 "latitude": levels[0]["latitude"],
                 "longitude": levels[0]["longitude"],
                 "timestamp": _json_value(levels[0]["timestamp"]),
@@ -245,7 +264,7 @@ class InvestigationService:
                     },
                 )
             ],
-            assumptions=["Vertical interpolation is limited to each profile's native depth range."],
+            assumptions=["Each WMO/cycle expands to all source representations; interpolation occurs only within a representation's native depth range and never across representations."],
             warnings=[] if rows else ["No matching profiles; widen one bounded filter."],
             section_request=request,
         )

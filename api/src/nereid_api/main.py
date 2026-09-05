@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -33,10 +33,15 @@ class PlanResponse(BaseModel):
     warnings: list[str]
 
 
+class SelectedRepresentation(BaseModel):
+    wmo: str
+    cycle: int = Field(ge=0)
+    source_profile_index: int = Field(ge=0)
+
+
 class ExportRequest(BaseModel):
-    envelope: ResultEnvelope
-    rows: list[dict[str, object]]
-    generated_at: datetime
+    plan: QueryPlan
+    selections: list[SelectedRepresentation] = Field(min_length=1, max_length=100)
 
 
 def create_app(
@@ -96,8 +101,14 @@ def create_app(
 
     @app.post("/v1/export")
     def export(request: ExportRequest) -> Response:
+        if service is None:
+            raise HTTPException(status_code=503, detail="ARGO snapshot is unavailable")
+        try:
+            envelope = service.export_selection(request.plan, [item.model_dump() for item in request.selections])
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         return Response(
-            build_evidence_zip(request.envelope, request.rows, request.generated_at),
+            build_evidence_zip(envelope, envelope.data, datetime(1980, 1, 1, tzinfo=timezone.utc)),
             media_type="application/zip",
             headers={"Content-Disposition": "attachment; filename=nereid-evidence.zip"},
         )

@@ -43,8 +43,9 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
         "start_date": "2023-03-01", "end_date": "2023-03-31",
         "parameters": ["TEMP", "PSAL"], "qc_mode": "research",
     }).json()
+    selection = {"wmo": "1900001", "cycle": 7, "source_profile_index": 0}
     response = client.post("/v1/export", json={
-        "envelope": result, "rows": result["data"], "generated_at": "2026-09-05T00:00:00Z",
+        "plan": result["query_plan"], "selections": [selection],
     })
 
     assert response.status_code == 200
@@ -53,5 +54,9 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
         assert archive.namelist() == ["README.txt", "selection.csv", "provenance.json", "query-plan.json", "methods.json"]
         selected = list(csv.DictReader(io.StringIO(archive.read("selection.csv").decode())))
         assert [(row["wmo"], float(row["pressure_dbar"])) for row in selected] == sorted((row["wmo"], float(row["pressure_dbar"])) for row in selected)
-        assert {row["wmo"] for row in selected} == {"1900001", "1900002"}
+        assert {row["wmo"] for row in selected} == {"1900001"}
+        assert {row["source_profile_index"] for row in selected} == {"0"}
         assert all(row["temperature_adjusted_qc"] not in {"3", "4"} for row in selected)
+
+    altered = client.post("/v1/export", json={"plan": result["query_plan"], "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 99}]})
+    assert altered.status_code == 422

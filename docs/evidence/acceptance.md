@@ -52,7 +52,7 @@ The full Playwright command runs the rendering test and therefore overwrites `re
 
 ## Planner corpus
 
-`query-cases.json` contains exactly 30 diverse natural-language questions: 25 bounded allowed-operation/filter cases and exactly 5 unbounded or injection-like rejection cases. `evaluate_queries.py` validates corpus contracts only. Azure endpoint, key, deployment, and API-version variables were unset, so validator/corpus readiness is measured but **live planner accuracy is unmeasured/configuration-blocked**. No score such as 27/30 is claimed and no local natural-language parser was added.
+`query-cases.json` contains exactly 30 diverse natural-language questions: 25 bounded allowed-operation/filter cases and exactly 5 unbounded or injection-like rejection cases. `evaluate_queries.py` validates corpus contracts only. Azure endpoint, key, deployment, and API-version variables were unset. The real evaluator was run and exited 2 with `planner evaluation BLOCKED: Azure configuration unavailable; no score measured`. Therefore the **Task 8 planner gate is BLOCKED**, live planner accuracy is unmeasured, and no score such as 27/30 is claimed. No local natural-language parser was added.
 
 ## Hygiene and limitations
 

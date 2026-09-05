@@ -29,9 +29,9 @@ export async function interpretQuestion(question: string, signal?: AbortSignal):
   return response.json() as Promise<PlannerResponse>
 }
 
-export async function exportEvidence(result: ResultEnvelope): Promise<Blob> {
+export async function exportEvidence(plan: QueryPlan, selections: { wmo: string; cycle: number; source_profile_index: number }[]): Promise<Blob> {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? ''
-  const response = await fetch(`${baseUrl}/v1/export`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ envelope: result, rows: result.data, generated_at: new Date().toISOString() }) })
+  const response = await fetch(`${baseUrl}/v1/export`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan, selections }) })
   if (!response.ok) throw new ApiError(response.status, response.statusText)
   return response.blob()
 }
