@@ -35,6 +35,7 @@ def test_export_is_deterministic_and_source_faithful():
 
 def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
     from fastapi.testclient import TestClient
+
     from nereid_api.main import create_app
 
     client = TestClient(create_app(snapshot_dir))
@@ -57,6 +58,8 @@ def test_export_endpoint_downloads_the_exact_evidence_members(snapshot_dir):
         assert {row["wmo"] for row in selected} == {"1900001"}
         assert {row["source_profile_index"] for row in selected} == {"0"}
         assert all(row["temperature_adjusted_qc"] not in {"3", "4"} for row in selected)
+        methods = json.loads(archive.read("methods.json"))
+        assert methods["qc_summary"] == {"retained": 3, "rejected": 3}
 
     altered = client.post("/v1/export", json={"plan": result["query_plan"], "selections": [{"wmo": "1900001", "cycle": 7, "source_profile_index": 99}]})
     assert altered.status_code == 422

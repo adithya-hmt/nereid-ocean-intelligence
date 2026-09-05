@@ -34,9 +34,9 @@ WMO 2902388/cycle 274 contains two source representations. `source_profile_index
 Run in this order on 2026-09-05:
 
 ```bash
-uv run --project pipeline pytest -v                 # 37 passed (71 dependency warnings)
-uv run --project api pytest -v                      # 37 passed (71 dependency warnings)
-pnpm --dir web test                                 # 6 files / 18 tests passed
+uv run --project pipeline pytest -v                 # 38 passed (71 dependency warnings)
+uv run --project api pytest -v                      # 38 passed (71 dependency warnings)
+pnpm --dir web test                                 # 7 files / 19 tests passed
 pnpm --dir web lint                                 # passed
 pnpm --dir web build                                # passed
 pnpm --dir web exec playwright test                 # 2 passed
@@ -46,9 +46,9 @@ uv run --project api python docs/evidence/evaluate_queries.py
 # no live score measured
 ```
 
-The full Playwright command runs the rendering test and therefore overwrites `rendering.json`; the headed GPU command was deliberately run afterwards to regenerate Task 6 GPU evidence. It used system Chromium 151.0.0.0 on DISPLAY `:0` / Wayland and reported Intel UHD Graphics 620. The regenerated 100,000-point result was 58.433 actual R3F FPS (110.7 ms initialization); see `rendering.json` for browser user agent, renderer, and probe details.
+The full Playwright command runs the rendering test and therefore overwrites `rendering.json`; the headed GPU command was deliberately run afterwards to regenerate Task 6 GPU evidence. It used system Chromium 151.0.0.0 on DISPLAY `:0` / Wayland and reported Intel UHD Graphics 620. The regenerated 100,000-point result was 59.537 actual R3F FPS (150.8 ms initialization); see `rendering.json` for browser user agent, renderer, and probe details.
 
-`web/e2e/winning-flow.spec.ts` starts FastAPI against the committed snapshot and Next.js with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`. It blocks every browser request whose host is not loopback, executes the March filters, confirms both WMO/cycle identities, native depth plot, receipt DOI/QC/method/provenance and the multiple-scheme warning, downloads `nereid-evidence.zip`, and verifies the five ZIP member names. It fails if synthetic or test-only fallback labels are visible. The focused API export test also verifies exact member order, deterministic bytes for reordered input, sorted selected rows, QC/source fields, units, query plan, QC counts, and download disposition.
+`web/e2e/winning-flow.spec.ts` starts FastAPI against the committed snapshot and Next.js with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`. It blocks every browser request whose host is not loopback, executes the March filters, parses numeric trajectory bounds and cutoff, confirms both WMO/cycle identities, native depth plot, receipt DOI/QC/method/provenance and the multiple-scheme warning, downloads `nereid-evidence.zip`, verifies the five ZIP member names, and inflates `selection.csv` to prove it contains exactly `1902202/161/0` and `2902388/274/0` while excluding `2902388/274/1`. It fails if synthetic or test-only fallback labels are visible. The focused API export test also verifies exact member order, deterministic bytes for reordered input, sorted selected rows, QC/source fields, units, query plan, QC counts, and download disposition.
 
 ## Planner corpus
 

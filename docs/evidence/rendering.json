@@ -10,21 +10,21 @@
     "measurement": "R3F useFrame callbacks while the benchmark probe invalidated Canvas frameloop=demand for five seconds.",
     "emptyCanvas": {
       "points": 0,
-      "initializationMs": 20,
-      "r3fFps": 60.396,
+      "initializationMs": 18.3,
+      "r3fFps": 60.336,
       "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
       "hardware": "hardwareConcurrency=8; deviceMemory=16 GB",
       "renderer": "Google Inc. (Intel) / ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (WHL GT2), OpenGL ES 3.2)",
-      "probe": "0.007 ms / 16.557 ms; invalidations=302"
+      "probe": "0.004 ms / 16.574 ms; invalidations=301"
     },
     "pointCloud": {
       "points": 100000,
-      "initializationMs": 110.7,
-      "r3fFps": 58.433,
+      "initializationMs": 150.8,
+      "r3fFps": 59.537,
       "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
       "hardware": "hardwareConcurrency=8; deviceMemory=16 GB",
       "renderer": "Google Inc. (Intel) / ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (WHL GT2), OpenGL ES 3.2)",
-      "probe": "0.004 ms / 17.114 ms; invalidations=292"
+      "probe": "0.003 ms / 16.796 ms; invalidations=297"
     }
   }
 }

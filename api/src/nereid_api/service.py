@@ -168,10 +168,15 @@ class InvestigationService:
         if not requested <= available:
             raise ValueError("export selection is not present in the bounded QC-eligible result")
         rows = [row for row in envelope.data if (row["wmo"], row["cycle"], row["source_profile_index"]) in requested]
+        candidate_count = self.store.count_selected_candidates(plan, requested)
+        eligible_count = self.store.count_selected_qc_eligible(plan, requested)
         return envelope.model_copy(update={
             "data": rows,
             "provenance": _provenance(rows),
-            "qc_summary": QcSummary(retained=len(rows), rejected=0),
+            "qc_summary": QcSummary(
+                retained=len(rows),
+                rejected=max(candidate_count - eligible_count, 0),
+            ),
         })
 
     def derive_section(self, request: SectionRequest) -> ResultEnvelope:

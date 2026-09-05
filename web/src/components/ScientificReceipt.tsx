@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { exportEvidence } from '../lib/api'
 import type { ResultEnvelope } from '../lib/types'
 
@@ -10,7 +10,13 @@ export function ScientificReceipt({ result }: { result: ResultEnvelope }) {
     const selection = { wmo: String(row.wmo), cycle: Number(row.cycle), source_profile_index: Number(row.source_profile_index) }
     return [`${selection.wmo}/${selection.cycle}/${selection.source_profile_index}`, { ...selection, scheme: String(row.vertical_sampling_scheme) }]
   })).values())
-  const [selected, setSelected] = useState<Selection[]>(() => representations.map(({ wmo, cycle, source_profile_index }) => ({ wmo, cycle, source_profile_index })))
+  const representationKey = JSON.stringify(representations.map(({ wmo, cycle, source_profile_index }) => ({ wmo, cycle, source_profile_index })).sort((left, right) => `${left.wmo}/${left.cycle}/${left.source_profile_index}`.localeCompare(`${right.wmo}/${right.cycle}/${right.source_profile_index}`)))
+  const [selected, setSelected] = useState<Selection[]>(() => JSON.parse(representationKey) as Selection[])
+  useEffect(() => {
+    // Selection is stateful user input and must follow only a new server result set.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelected(JSON.parse(representationKey) as Selection[])
+  }, [representationKey])
   const toggle = (selection: Selection) => setSelected((current) => current.some((item) => item.wmo === selection.wmo && item.cycle === selection.cycle && item.source_profile_index === selection.source_profile_index) ? current.filter((item) => item.wmo !== selection.wmo || item.cycle !== selection.cycle || item.source_profile_index !== selection.source_profile_index) : [...current, selection])
   const download = async () => {
     const blob = await exportEvidence(result.query_plan, selected)

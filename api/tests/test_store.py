@@ -69,6 +69,15 @@ def test_find_profiles_applies_date_filter_with_matching_bbox(snapshot_dir):
     assert rows == []
 
 
+def test_selected_candidate_counts_are_bounded_and_ignore_pagination(snapshot_dir):
+    store = ArgoStore(snapshot_dir)
+    plan = _plan(row_limit=1)
+    identities = {("1900001", 7, 0)}
+
+    assert store.count_selected_candidates(plan, identities) == 6
+    assert store.count_selected_qc_eligible(plan, identities) == 3
+
+
 def test_get_profile_and_compare_profiles_apply_qc_policy(snapshot_dir):
     store = ArgoStore(snapshot_dir)
 
